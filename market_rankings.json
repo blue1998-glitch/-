@@ -47,16 +47,6 @@
   {
     "symbol": "1714",
     "score": 32.21,
-    "rs_rating": 98
-  },
-  {
-    "symbol": "2851",
-    "score": 31.26,
-    "rs_rating": 97
-  },
-  {
-    "symbol": "9921",
-    "score": 29.45,
     "rs_rating": 97
   },
   {
@@ -77,7 +67,7 @@
   {
     "symbol": "1435",
     "score": 23.33,
-    "rs_rating": 96
+    "rs_rating": 97
   },
   {
     "symbol": "2601",
@@ -110,34 +100,19 @@
     "rs_rating": 95
   },
   {
-    "symbol": "2603",
-    "score": 19.77,
-    "rs_rating": 95
-  },
-  {
-    "symbol": "7788",
-    "score": 19.76,
-    "rs_rating": 95
-  },
-  {
     "symbol": "1808",
     "score": 19.46,
     "rs_rating": 95
   },
   {
-    "symbol": "2723",
-    "score": 19.29,
-    "rs_rating": 94
-  },
-  {
     "symbol": "2613",
     "score": 18.93,
-    "rs_rating": 94
+    "rs_rating": 95
   },
   {
     "symbol": "1718",
     "score": 18.34,
-    "rs_rating": 94
+    "rs_rating": 95
   },
   {
     "symbol": "2357",
@@ -145,19 +120,19 @@
     "rs_rating": 94
   },
   {
-    "symbol": "2605",
-    "score": 17.94,
+    "symbol": "2634",
+    "score": 17.91,
     "rs_rating": 94
   },
   {
-    "symbol": "2634",
-    "score": 17.91,
-    "rs_rating": 93
+    "symbol": "6672",
+    "score": 16.72,
+    "rs_rating": 94
   },
   {
     "symbol": "2344",
     "score": 16.01,
-    "rs_rating": 93
+    "rs_rating": 94
   },
   {
     "symbol": "2484",
@@ -175,1529 +150,1399 @@
     "rs_rating": 93
   },
   {
-    "symbol": "2850",
-    "score": 15.21,
-    "rs_rating": 92
-  },
-  {
     "symbol": "2027",
     "score": 15.03,
-    "rs_rating": 92
+    "rs_rating": 93
   },
   {
     "symbol": "2031",
     "score": 14.94,
-    "rs_rating": 92
-  },
-  {
-    "symbol": "2905",
-    "score": 14.82,
-    "rs_rating": 92
+    "rs_rating": 93
   },
   {
     "symbol": "1402",
     "score": 14.6,
-    "rs_rating": 91
+    "rs_rating": 92
   },
   {
     "symbol": "1909",
     "score": 14.56,
-    "rs_rating": 91
+    "rs_rating": 92
   },
   {
     "symbol": "2395",
     "score": 14.55,
-    "rs_rating": 91
+    "rs_rating": 92
   },
   {
     "symbol": "2301",
     "score": 14.36,
-    "rs_rating": 91
-  },
-  {
-    "symbol": "2883",
-    "score": 14.14,
-    "rs_rating": 91
+    "rs_rating": 92
   },
   {
     "symbol": "2539",
     "score": 13.93,
-    "rs_rating": 90
+    "rs_rating": 91
   },
   {
     "symbol": "2006",
     "score": 13.87,
-    "rs_rating": 90
-  },
-  {
-    "symbol": "2509",
-    "score": 13.62,
-    "rs_rating": 90
+    "rs_rating": 91
   },
   {
     "symbol": "2248",
     "score": 13.54,
-    "rs_rating": 90
+    "rs_rating": 91
   },
   {
     "symbol": "2455",
     "score": 13.47,
-    "rs_rating": 90
+    "rs_rating": 91
   },
   {
     "symbol": "2364",
     "score": 12.71,
-    "rs_rating": 89
+    "rs_rating": 91
   },
   {
     "symbol": "1708",
     "score": 12.34,
-    "rs_rating": 89
+    "rs_rating": 90
   },
   {
     "symbol": "2108",
     "score": 12.12,
-    "rs_rating": 89
+    "rs_rating": 90
   },
   {
     "symbol": "1727",
     "score": 12.09,
-    "rs_rating": 89
+    "rs_rating": 90
   },
   {
     "symbol": "1439",
     "score": 12.02,
-    "rs_rating": 89
-  },
-  {
-    "symbol": "2890",
-    "score": 11.97,
-    "rs_rating": 88
+    "rs_rating": 90
   },
   {
     "symbol": "2383",
     "score": 11.86,
-    "rs_rating": 88
+    "rs_rating": 89
   },
   {
     "symbol": "2464",
     "score": 11.7,
-    "rs_rating": 88
+    "rs_rating": 89
   },
   {
     "symbol": "2461",
     "score": 11.63,
-    "rs_rating": 88
+    "rs_rating": 89
   },
   {
     "symbol": "2537",
     "score": 11.38,
-    "rs_rating": 88
+    "rs_rating": 89
   },
   {
     "symbol": "1608",
     "score": 11.28,
-    "rs_rating": 87
+    "rs_rating": 89
   },
   {
     "symbol": "1455",
     "score": 11.24,
-    "rs_rating": 87
+    "rs_rating": 88
   },
   {
     "symbol": "2542",
     "score": 11.19,
-    "rs_rating": 87
+    "rs_rating": 88
   },
   {
     "symbol": "1440",
     "score": 10.86,
-    "rs_rating": 87
+    "rs_rating": 88
   },
   {
     "symbol": "2392",
     "score": 10.74,
-    "rs_rating": 87
+    "rs_rating": 88
   },
   {
     "symbol": "2612",
     "score": 10.69,
-    "rs_rating": 86
-  },
-  {
-    "symbol": "2520",
-    "score": 10.63,
-    "rs_rating": 86
+    "rs_rating": 87
   },
   {
     "symbol": "2636",
     "score": 10.27,
-    "rs_rating": 86
-  },
-  {
-    "symbol": "2884",
-    "score": 10.17,
-    "rs_rating": 86
+    "rs_rating": 87
   },
   {
     "symbol": "1316",
     "score": 9.98,
-    "rs_rating": 86
-  },
-  {
-    "symbol": "2618",
-    "score": 9.89,
-    "rs_rating": 85
-  },
-  {
-    "symbol": "2881",
-    "score": 9.79,
-    "rs_rating": 85
+    "rs_rating": 87
   },
   {
     "symbol": "2617",
     "score": 9.7,
-    "rs_rating": 85
+    "rs_rating": 87
   },
   {
     "symbol": "2451",
     "score": 9.67,
-    "rs_rating": 85
+    "rs_rating": 87
   },
   {
     "symbol": "2606",
     "score": 9.34,
-    "rs_rating": 84
+    "rs_rating": 86
   },
   {
     "symbol": "2536",
     "score": 9.33,
-    "rs_rating": 84
+    "rs_rating": 86
   },
   {
     "symbol": "2399",
     "score": 9.16,
-    "rs_rating": 84
+    "rs_rating": 86
   },
   {
     "symbol": "2607",
     "score": 9.16,
-    "rs_rating": 84
+    "rs_rating": 86
   },
   {
     "symbol": "2115",
     "score": 9.08,
-    "rs_rating": 84
-  },
-  {
-    "symbol": "2852",
-    "score": 9.02,
-    "rs_rating": 83
+    "rs_rating": 85
   },
   {
     "symbol": "1558",
     "score": 8.97,
-    "rs_rating": 83
+    "rs_rating": 85
   },
   {
     "symbol": "2243",
     "score": 8.39,
-    "rs_rating": 83
-  },
-  {
-    "symbol": "2739",
-    "score": 8.37,
-    "rs_rating": 83
+    "rs_rating": 85
   },
   {
     "symbol": "2025",
     "score": 7.85,
-    "rs_rating": 83
+    "rs_rating": 85
   },
   {
     "symbol": "1416",
     "score": 7.79,
-    "rs_rating": 82
+    "rs_rating": 85
   },
   {
     "symbol": "2069",
     "score": 7.74,
-    "rs_rating": 82
+    "rs_rating": 84
   },
   {
     "symbol": "1906",
     "score": 7.43,
-    "rs_rating": 82
-  },
-  {
-    "symbol": "2535",
-    "score": 7.42,
-    "rs_rating": 82
+    "rs_rating": 84
   },
   {
     "symbol": "1442",
     "score": 7.38,
-    "rs_rating": 82
+    "rs_rating": 84
   },
   {
     "symbol": "1437",
     "score": 7.37,
-    "rs_rating": 81
+    "rs_rating": 84
   },
   {
     "symbol": "1409",
     "score": 7.29,
-    "rs_rating": 81
+    "rs_rating": 83
   },
   {
     "symbol": "2029",
     "score": 7.29,
-    "rs_rating": 81
+    "rs_rating": 83
   },
   {
     "symbol": "2362",
     "score": 7.25,
-    "rs_rating": 81
-  },
-  {
-    "symbol": "2882",
-    "score": 7.16,
-    "rs_rating": 81
+    "rs_rating": 83
   },
   {
     "symbol": "1605",
     "score": 6.96,
-    "rs_rating": 80
+    "rs_rating": 83
   },
   {
     "symbol": "1526",
     "score": 6.83,
-    "rs_rating": 80
+    "rs_rating": 82
   },
   {
     "symbol": "1301",
     "score": 6.72,
-    "rs_rating": 80
+    "rs_rating": 82
   },
   {
     "symbol": "2207",
     "score": 6.72,
-    "rs_rating": 80
+    "rs_rating": 82
   },
   {
     "symbol": "1102",
     "score": 6.62,
-    "rs_rating": 80
+    "rs_rating": 82
   },
   {
     "symbol": "1710",
     "score": 6.6,
-    "rs_rating": 79
+    "rs_rating": 82
   },
   {
     "symbol": "2483",
     "score": 6.38,
-    "rs_rating": 79
+    "rs_rating": 81
   },
   {
     "symbol": "1323",
     "score": 6.35,
-    "rs_rating": 79
+    "rs_rating": 81
   },
   {
     "symbol": "1447",
     "score": 6.3,
-    "rs_rating": 79
+    "rs_rating": 81
   },
   {
     "symbol": "2409",
     "score": 6.27,
-    "rs_rating": 79
+    "rs_rating": 81
   },
   {
     "symbol": "1517",
     "score": 6.22,
-    "rs_rating": 78
+    "rs_rating": 80
   },
   {
     "symbol": "2528",
     "score": 6.12,
-    "rs_rating": 78
+    "rs_rating": 80
   },
   {
     "symbol": "1795",
     "score": 6.07,
-    "rs_rating": 78
+    "rs_rating": 80
   },
   {
     "symbol": "1314",
     "score": 5.97,
-    "rs_rating": 78
+    "rs_rating": 80
   },
   {
     "symbol": "1236",
     "score": 5.91,
-    "rs_rating": 77
+    "rs_rating": 80
   },
   {
     "symbol": "1734",
     "score": 5.89,
-    "rs_rating": 77
+    "rs_rating": 79
   },
   {
     "symbol": "1319",
     "score": 5.87,
-    "rs_rating": 77
+    "rs_rating": 79
   },
   {
     "symbol": "2474",
     "score": 5.64,
-    "rs_rating": 77
+    "rs_rating": 79
   },
   {
     "symbol": "2206",
     "score": 5.63,
-    "rs_rating": 77
+    "rs_rating": 79
   },
   {
     "symbol": "1519",
     "score": 5.62,
-    "rs_rating": 76
+    "rs_rating": 78
   },
   {
     "symbol": "1717",
     "score": 5.51,
-    "rs_rating": 76
+    "rs_rating": 78
   },
   {
     "symbol": "1444",
     "score": 5.43,
-    "rs_rating": 76
+    "rs_rating": 78
   },
   {
     "symbol": "2204",
     "score": 5.42,
-    "rs_rating": 76
+    "rs_rating": 78
   },
   {
     "symbol": "1504",
     "score": 5.39,
-    "rs_rating": 76
+    "rs_rating": 78
   },
   {
     "symbol": "2597",
     "score": 5.39,
-    "rs_rating": 75
+    "rs_rating": 77
   },
   {
     "symbol": "2324",
     "score": 5.27,
-    "rs_rating": 75
+    "rs_rating": 77
   },
   {
     "symbol": "2516",
     "score": 5.24,
-    "rs_rating": 75
+    "rs_rating": 77
   },
   {
     "symbol": "2486",
     "score": 5.18,
-    "rs_rating": 75
+    "rs_rating": 77
   },
   {
     "symbol": "1110",
     "score": 5.16,
-    "rs_rating": 75
+    "rs_rating": 76
   },
   {
     "symbol": "2302",
     "score": 5.15,
-    "rs_rating": 74
-  },
-  {
-    "symbol": "2727",
-    "score": 5.13,
-    "rs_rating": 74
+    "rs_rating": 76
   },
   {
     "symbol": "2201",
     "score": 5.1,
-    "rs_rating": 74
+    "rs_rating": 76
   },
   {
     "symbol": "1438",
     "score": 5.09,
-    "rs_rating": 74
+    "rs_rating": 76
   },
   {
     "symbol": "2010",
     "score": 5.05,
-    "rs_rating": 74
+    "rs_rating": 76
   },
   {
     "symbol": "2101",
     "score": 4.99,
-    "rs_rating": 73
+    "rs_rating": 75
   },
   {
     "symbol": "1315",
     "score": 4.89,
-    "rs_rating": 73
+    "rs_rating": 75
   },
   {
     "symbol": "2107",
     "score": 4.72,
-    "rs_rating": 73
+    "rs_rating": 75
   },
   {
     "symbol": "1456",
     "score": 4.64,
-    "rs_rating": 73
+    "rs_rating": 75
   },
   {
     "symbol": "1229",
     "score": 4.62,
-    "rs_rating": 73
+    "rs_rating": 74
   },
   {
     "symbol": "1470",
     "score": 4.6,
-    "rs_rating": 72
+    "rs_rating": 74
   },
   {
     "symbol": "2104",
     "score": 4.5,
-    "rs_rating": 72
+    "rs_rating": 74
   },
   {
     "symbol": "2009",
     "score": 4.39,
-    "rs_rating": 72
+    "rs_rating": 74
   },
   {
     "symbol": "2527",
     "score": 4.35,
-    "rs_rating": 72
+    "rs_rating": 74
+  },
+  {
+    "symbol": "3046",
+    "score": 4.29,
+    "rs_rating": 73
   },
   {
     "symbol": "1434",
     "score": 4.27,
-    "rs_rating": 72
+    "rs_rating": 73
   },
   {
     "symbol": "1101",
     "score": 4.22,
-    "rs_rating": 71
+    "rs_rating": 73
   },
   {
     "symbol": "1232",
     "score": 4.16,
-    "rs_rating": 71
+    "rs_rating": 73
   },
   {
     "symbol": "1313",
     "score": 4.16,
-    "rs_rating": 71
+    "rs_rating": 72
   },
   {
     "symbol": "2489",
     "score": 4.14,
-    "rs_rating": 71
+    "rs_rating": 72
   },
   {
     "symbol": "1733",
     "score": 4.11,
-    "rs_rating": 70
+    "rs_rating": 72
   },
   {
     "symbol": "1321",
     "score": 4.1,
-    "rs_rating": 70
+    "rs_rating": 72
   },
   {
     "symbol": "1326",
     "score": 4.1,
-    "rs_rating": 70
+    "rs_rating": 72
   },
   {
     "symbol": "1611",
     "score": 4.09,
-    "rs_rating": 70
+    "rs_rating": 71
   },
   {
     "symbol": "1532",
     "score": 4.08,
-    "rs_rating": 70
+    "rs_rating": 71
   },
   {
     "symbol": "2034",
     "score": 4.05,
-    "rs_rating": 69
+    "rs_rating": 71
   },
   {
     "symbol": "1612",
     "score": 4.0,
-    "rs_rating": 69
+    "rs_rating": 71
   },
   {
     "symbol": "2032",
     "score": 3.89,
-    "rs_rating": 69
+    "rs_rating": 70
   },
   {
     "symbol": "2442",
     "score": 3.86,
-    "rs_rating": 69
+    "rs_rating": 70
   },
   {
     "symbol": "2379",
     "score": 3.85,
-    "rs_rating": 69
+    "rs_rating": 70
   },
   {
     "symbol": "2630",
     "score": 3.73,
-    "rs_rating": 68
+    "rs_rating": 70
   },
   {
     "symbol": "2323",
     "score": 3.69,
-    "rs_rating": 68
+    "rs_rating": 70
   },
   {
     "symbol": "1615",
     "score": 3.65,
-    "rs_rating": 68
+    "rs_rating": 69
   },
   {
     "symbol": "1468",
     "score": 3.62,
-    "rs_rating": 68
+    "rs_rating": 69
   },
   {
     "symbol": "1723",
     "score": 3.54,
-    "rs_rating": 68
-  },
-  {
-    "symbol": "2614",
-    "score": 3.5,
-    "rs_rating": 67
+    "rs_rating": 69
   },
   {
     "symbol": "1905",
     "score": 3.47,
-    "rs_rating": 67
+    "rs_rating": 69
   },
   {
     "symbol": "1617",
     "score": 3.45,
-    "rs_rating": 67
+    "rs_rating": 68
   },
   {
     "symbol": "1725",
     "score": 3.43,
-    "rs_rating": 67
-  },
-  {
-    "symbol": "2530",
-    "score": 3.43,
-    "rs_rating": 67
+    "rs_rating": 68
   },
   {
     "symbol": "1308",
     "score": 3.41,
-    "rs_rating": 66
+    "rs_rating": 68
   },
   {
     "symbol": "2359",
     "score": 3.38,
-    "rs_rating": 66
+    "rs_rating": 68
   },
   {
     "symbol": "1216",
     "score": 3.35,
-    "rs_rating": 66
+    "rs_rating": 68
+  },
+  {
+    "symbol": "6277",
+    "score": 3.31,
+    "rs_rating": 67
   },
   {
     "symbol": "1817",
     "score": 3.2,
-    "rs_rating": 66
+    "rs_rating": 67
   },
   {
     "symbol": "2351",
     "score": 3.19,
-    "rs_rating": 66
+    "rs_rating": 67
   },
   {
     "symbol": "2480",
     "score": 3.16,
-    "rs_rating": 65
-  },
-  {
-    "symbol": "2610",
-    "score": 3.16,
-    "rs_rating": 65
+    "rs_rating": 67
   },
   {
     "symbol": "2348",
     "score": 3.15,
-    "rs_rating": 65
+    "rs_rating": 66
   },
   {
     "symbol": "2371",
     "score": 3.14,
-    "rs_rating": 65
+    "rs_rating": 66
   },
   {
     "symbol": "2258",
     "score": 3.12,
-    "rs_rating": 65
+    "rs_rating": 66
   },
   {
     "symbol": "2008",
     "score": 3.08,
-    "rs_rating": 64
+    "rs_rating": 66
+  },
+  {
+    "symbol": "8222",
+    "score": 3.05,
+    "rs_rating": 65
   },
   {
     "symbol": "2015",
     "score": 3.01,
-    "rs_rating": 64
+    "rs_rating": 65
   },
   {
     "symbol": "2017",
     "score": 3.01,
-    "rs_rating": 64
+    "rs_rating": 65
   },
   {
     "symbol": "2109",
     "score": 3.01,
-    "rs_rating": 64
+    "rs_rating": 65
   },
   {
     "symbol": "2247",
     "score": 2.96,
-    "rs_rating": 63
+    "rs_rating": 65
   },
   {
     "symbol": "2354",
     "score": 2.96,
-    "rs_rating": 63
+    "rs_rating": 64
   },
   {
     "symbol": "2020",
     "score": 2.93,
-    "rs_rating": 63
+    "rs_rating": 64
   },
   {
     "symbol": "2330",
     "score": 2.91,
-    "rs_rating": 63
-  },
-  {
-    "symbol": "2834",
-    "score": 2.91,
-    "rs_rating": 63
+    "rs_rating": 64
   },
   {
     "symbol": "2062",
     "score": 2.85,
-    "rs_rating": 62
+    "rs_rating": 64
+  },
+  {
+    "symbol": "5871",
+    "score": 2.84,
+    "rs_rating": 63
   },
   {
     "symbol": "1452",
     "score": 2.8,
-    "rs_rating": 62
+    "rs_rating": 63
   },
   {
     "symbol": "1475",
     "score": 2.74,
-    "rs_rating": 62
+    "rs_rating": 63
   },
   {
     "symbol": "2465",
     "score": 2.73,
-    "rs_rating": 62
-  },
-  {
-    "symbol": "2838",
-    "score": 2.61,
-    "rs_rating": 62
+    "rs_rating": 63
   },
   {
     "symbol": "2467",
     "score": 2.53,
-    "rs_rating": 61
+    "rs_rating": 63
   },
   {
     "symbol": "1227",
     "score": 2.51,
-    "rs_rating": 61
+    "rs_rating": 62
   },
   {
     "symbol": "1563",
     "score": 2.47,
-    "rs_rating": 61
+    "rs_rating": 62
   },
   {
     "symbol": "2072",
     "score": 2.45,
-    "rs_rating": 61
+    "rs_rating": 62
   },
   {
     "symbol": "2397",
     "score": 2.42,
-    "rs_rating": 61
-  },
-  {
-    "symbol": "2501",
-    "score": 2.36,
-    "rs_rating": 60
+    "rs_rating": 62
   },
   {
     "symbol": "1603",
     "score": 2.3,
-    "rs_rating": 60
+    "rs_rating": 61
+  },
+  {
+    "symbol": "8476",
+    "score": 2.25,
+    "rs_rating": 61
   },
   {
     "symbol": "2002",
     "score": 2.21,
-    "rs_rating": 60
+    "rs_rating": 61
   },
   {
     "symbol": "1419",
     "score": 2.19,
-    "rs_rating": 60
+    "rs_rating": 61
   },
   {
     "symbol": "1531",
     "score": 2.18,
-    "rs_rating": 60
+    "rs_rating": 61
   },
   {
     "symbol": "1513",
     "score": 2.15,
-    "rs_rating": 59
-  },
-  {
-    "symbol": "2547",
-    "score": 2.13,
-    "rs_rating": 59
+    "rs_rating": 60
   },
   {
     "symbol": "1457",
     "score": 2.09,
-    "rs_rating": 59
+    "rs_rating": 60
   },
   {
     "symbol": "2633",
     "score": 2.02,
-    "rs_rating": 59
+    "rs_rating": 60
   },
   {
     "symbol": "1231",
     "score": 1.99,
-    "rs_rating": 59
-  },
-  {
-    "symbol": "2524",
-    "score": 1.98,
-    "rs_rating": 58
+    "rs_rating": 60
   },
   {
     "symbol": "2459",
     "score": 1.95,
-    "rs_rating": 58
+    "rs_rating": 59
   },
   {
     "symbol": "2511",
     "score": 1.95,
-    "rs_rating": 58
+    "rs_rating": 59
   },
   {
     "symbol": "2321",
     "score": 1.92,
-    "rs_rating": 58
+    "rs_rating": 59
   },
   {
     "symbol": "2468",
     "score": 1.91,
-    "rs_rating": 58
-  },
-  {
-    "symbol": "6668",
-    "score": 1.9,
-    "rs_rating": 57
+    "rs_rating": 59
   },
   {
     "symbol": "1466",
     "score": 1.87,
-    "rs_rating": 57
+    "rs_rating": 59
   },
   {
     "symbol": "1702",
     "score": 1.86,
-    "rs_rating": 57
+    "rs_rating": 58
   },
   {
     "symbol": "1720",
     "score": 1.83,
-    "rs_rating": 57
+    "rs_rating": 58
   },
   {
     "symbol": "1217",
     "score": 1.81,
-    "rs_rating": 56
+    "rs_rating": 58
   },
   {
     "symbol": "1737",
     "score": 1.8,
-    "rs_rating": 56
+    "rs_rating": 58
   },
   {
     "symbol": "1783",
     "score": 1.74,
-    "rs_rating": 56
+    "rs_rating": 57
   },
   {
     "symbol": "1598",
     "score": 1.68,
-    "rs_rating": 56
+    "rs_rating": 57
   },
   {
     "symbol": "1731",
     "score": 1.68,
-    "rs_rating": 56
+    "rs_rating": 57
   },
   {
     "symbol": "2102",
     "score": 1.68,
-    "rs_rating": 55
+    "rs_rating": 57
   },
   {
     "symbol": "1711",
     "score": 1.65,
-    "rs_rating": 55
+    "rs_rating": 57
   },
   {
     "symbol": "2421",
     "score": 1.64,
-    "rs_rating": 55
+    "rs_rating": 56
   },
   {
     "symbol": "2106",
     "score": 1.63,
-    "rs_rating": 55
+    "rs_rating": 56
   },
   {
     "symbol": "1726",
     "score": 1.57,
-    "rs_rating": 55
+    "rs_rating": 56
   },
   {
     "symbol": "1810",
     "score": 1.54,
-    "rs_rating": 54
+    "rs_rating": 56
   },
   {
     "symbol": "1201",
     "score": 1.53,
-    "rs_rating": 54
+    "rs_rating": 55
   },
   {
     "symbol": "1736",
     "score": 1.52,
-    "rs_rating": 54
-  },
-  {
-    "symbol": "7750",
-    "score": 1.48,
-    "rs_rating": 54
+    "rs_rating": 55
   },
   {
     "symbol": "1712",
     "score": 1.45,
-    "rs_rating": 54
+    "rs_rating": 55
   },
   {
     "symbol": "2332",
     "score": 1.45,
-    "rs_rating": 53
+    "rs_rating": 55
   },
   {
     "symbol": "1805",
     "score": 1.44,
-    "rs_rating": 53
+    "rs_rating": 55
   },
   {
     "symbol": "2545",
     "score": 1.43,
-    "rs_rating": 53
+    "rs_rating": 54
   },
   {
     "symbol": "2049",
     "score": 1.42,
-    "rs_rating": 53
+    "rs_rating": 54
   },
   {
     "symbol": "1451",
     "score": 1.38,
-    "rs_rating": 53
+    "rs_rating": 54
   },
   {
     "symbol": "1339",
     "score": 1.36,
-    "rs_rating": 52
+    "rs_rating": 54
   },
   {
     "symbol": "1467",
     "score": 1.3,
-    "rs_rating": 52
+    "rs_rating": 53
   },
   {
     "symbol": "1541",
     "score": 1.29,
-    "rs_rating": 52
-  },
-  {
-    "symbol": "2705",
-    "score": 1.18,
-    "rs_rating": 52
+    "rs_rating": 53
   },
   {
     "symbol": "2022",
     "score": 1.16,
-    "rs_rating": 52
+    "rs_rating": 53
   },
   {
     "symbol": "2534",
     "score": 1.16,
-    "rs_rating": 51
+    "rs_rating": 53
   },
   {
     "symbol": "2023",
     "score": 1.1,
-    "rs_rating": 51
+    "rs_rating": 53
   },
   {
     "symbol": "2642",
     "score": 1.08,
-    "rs_rating": 51
-  },
-  {
-    "symbol": "2849",
-    "score": 1.07,
-    "rs_rating": 51
+    "rs_rating": 52
   },
   {
     "symbol": "1103",
     "score": 1.03,
-    "rs_rating": 51
+    "rs_rating": 52
   },
   {
     "symbol": "1903",
     "score": 1.03,
-    "rs_rating": 50
+    "rs_rating": 52
   },
   {
     "symbol": "1590",
     "score": 0.98,
-    "rs_rating": 50
+    "rs_rating": 52
   },
   {
     "symbol": "1722",
     "score": 0.98,
-    "rs_rating": 50
+    "rs_rating": 51
   },
   {
     "symbol": "1789",
     "score": 0.97,
-    "rs_rating": 50
+    "rs_rating": 51
   },
   {
     "symbol": "1453",
     "score": 0.94,
-    "rs_rating": 50
+    "rs_rating": 51
   },
   {
     "symbol": "2415",
     "score": 0.94,
-    "rs_rating": 49
+    "rs_rating": 51
   },
   {
     "symbol": "2013",
     "score": 0.92,
-    "rs_rating": 49
+    "rs_rating": 51
   },
   {
     "symbol": "1802",
     "score": 0.91,
-    "rs_rating": 49
+    "rs_rating": 50
   },
   {
     "symbol": "2105",
     "score": 0.91,
-    "rs_rating": 49
-  },
-  {
-    "symbol": "2706",
-    "score": 0.74,
-    "rs_rating": 48
+    "rs_rating": 50
   },
   {
     "symbol": "1609",
     "score": 0.66,
-    "rs_rating": 48
+    "rs_rating": 50
   },
   {
     "symbol": "2356",
     "score": 0.57,
-    "rs_rating": 48
+    "rs_rating": 50
   },
   {
     "symbol": "2393",
     "score": 0.57,
-    "rs_rating": 48
+    "rs_rating": 49
   },
   {
     "symbol": "2427",
     "score": 0.53,
-    "rs_rating": 48
+    "rs_rating": 49
   },
   {
     "symbol": "2377",
     "score": 0.46,
-    "rs_rating": 47
+    "rs_rating": 49
   },
   {
     "symbol": "2430",
     "score": 0.43,
-    "rs_rating": 47
+    "rs_rating": 49
   },
   {
     "symbol": "2014",
     "score": 0.35,
-    "rs_rating": 47
+    "rs_rating": 48
   },
   {
     "symbol": "1464",
     "score": 0.31,
-    "rs_rating": 47
+    "rs_rating": 48
   },
   {
     "symbol": "1604",
     "score": 0.24,
-    "rs_rating": 47
+    "rs_rating": 48
   },
   {
     "symbol": "1474",
     "score": 0.21,
-    "rs_rating": 46
+    "rs_rating": 48
   },
   {
     "symbol": "1342",
     "score": 0.2,
-    "rs_rating": 46
+    "rs_rating": 48
   },
   {
     "symbol": "1762",
     "score": 0.2,
-    "rs_rating": 46
+    "rs_rating": 47
   },
   {
     "symbol": "1417",
     "score": 0.1,
-    "rs_rating": 46
+    "rs_rating": 47
   },
   {
     "symbol": "2352",
     "score": 0.09,
-    "rs_rating": 46
+    "rs_rating": 47
   },
   {
     "symbol": "2413",
     "score": 0.04,
-    "rs_rating": 45
+    "rs_rating": 47
   },
   {
     "symbol": "1104",
     "score": 0.01,
-    "rs_rating": 45
+    "rs_rating": 46
   },
   {
     "symbol": "1589",
     "score": 0.0,
-    "rs_rating": 45
+    "rs_rating": 46
   },
   {
     "symbol": "1806",
     "score": -0.04,
-    "rs_rating": 45
+    "rs_rating": 46
   },
   {
     "symbol": "2331",
     "score": -0.04,
-    "rs_rating": 45
+    "rs_rating": 46
   },
   {
     "symbol": "2382",
     "score": -0.09,
-    "rs_rating": 44
+    "rs_rating": 46
   },
   {
     "symbol": "1752",
     "score": -0.12,
-    "rs_rating": 44
+    "rs_rating": 45
   },
   {
     "symbol": "1235",
     "score": -0.2,
-    "rs_rating": 44
+    "rs_rating": 45
   },
   {
     "symbol": "2208",
     "score": -0.2,
-    "rs_rating": 44
+    "rs_rating": 45
   },
   {
     "symbol": "2380",
     "score": -0.23,
-    "rs_rating": 44
+    "rs_rating": 45
   },
   {
     "symbol": "2417",
     "score": -0.23,
-    "rs_rating": 43
+    "rs_rating": 44
   },
   {
     "symbol": "1786",
     "score": -0.24,
-    "rs_rating": 43
+    "rs_rating": 44
   },
   {
     "symbol": "2028",
     "score": -0.26,
-    "rs_rating": 43
+    "rs_rating": 44
   },
   {
     "symbol": "2515",
     "score": -0.29,
-    "rs_rating": 43
+    "rs_rating": 44
   },
   {
     "symbol": "2250",
     "score": -0.36,
-    "rs_rating": 43
-  },
-  {
-    "symbol": "2608",
-    "score": -0.43,
-    "rs_rating": 42
+    "rs_rating": 44
   },
   {
     "symbol": "2114",
     "score": -0.48,
-    "rs_rating": 42
+    "rs_rating": 43
   },
   {
     "symbol": "1203",
     "score": -0.49,
-    "rs_rating": 42
+    "rs_rating": 43
   },
   {
     "symbol": "2227",
     "score": -0.5,
-    "rs_rating": 42
+    "rs_rating": 43
   },
   {
     "symbol": "1525",
     "score": -0.52,
-    "rs_rating": 41
-  },
-  {
-    "symbol": "2506",
-    "score": -0.58,
-    "rs_rating": 41
+    "rs_rating": 43
   },
   {
     "symbol": "1233",
     "score": -0.68,
-    "rs_rating": 41
+    "rs_rating": 42
   },
   {
     "symbol": "2412",
     "score": -0.68,
-    "rs_rating": 41
-  },
-  {
-    "symbol": "7822",
-    "score": -0.71,
-    "rs_rating": 41
-  },
-  {
-    "symbol": "8016",
-    "score": -0.71,
-    "rs_rating": 40
+    "rs_rating": 42
   },
   {
     "symbol": "2347",
     "score": -0.74,
-    "rs_rating": 40
+    "rs_rating": 42
   },
   {
     "symbol": "1583",
     "score": -0.82,
-    "rs_rating": 40
+    "rs_rating": 42
   },
   {
     "symbol": "1614",
     "score": -0.83,
-    "rs_rating": 40
+    "rs_rating": 42
   },
   {
     "symbol": "1305",
     "score": -0.87,
-    "rs_rating": 40
+    "rs_rating": 41
+  },
+  {
+    "symbol": "6790",
+    "score": -0.88,
+    "rs_rating": 41
   },
   {
     "symbol": "2241",
     "score": -0.89,
-    "rs_rating": 39
+    "rs_rating": 41
   },
   {
     "symbol": "1307",
     "score": -0.9,
-    "rs_rating": 39
+    "rs_rating": 41
   },
   {
     "symbol": "1341",
     "score": -0.93,
-    "rs_rating": 39
-  },
-  {
-    "symbol": "2820",
-    "score": -0.93,
-    "rs_rating": 39
+    "rs_rating": 40
   },
   {
     "symbol": "1449",
     "score": -0.96,
-    "rs_rating": 39
+    "rs_rating": 40
   },
   {
     "symbol": "2432",
     "score": -0.97,
-    "rs_rating": 38
+    "rs_rating": 40
   },
   {
     "symbol": "2433",
     "score": -1.01,
-    "rs_rating": 38
-  },
-  {
-    "symbol": "2616",
-    "score": -1.04,
-    "rs_rating": 38
+    "rs_rating": 40
   },
   {
     "symbol": "1730",
     "score": -1.06,
-    "rs_rating": 38
+    "rs_rating": 40
   },
   {
     "symbol": "1530",
     "score": -1.08,
-    "rs_rating": 38
+    "rs_rating": 39
   },
   {
     "symbol": "1463",
     "score": -1.09,
-    "rs_rating": 37
-  },
-  {
-    "symbol": "2712",
-    "score": -1.09,
-    "rs_rating": 37
+    "rs_rating": 39
   },
   {
     "symbol": "2353",
     "score": -1.13,
-    "rs_rating": 37
+    "rs_rating": 39
   },
   {
     "symbol": "1473",
     "score": -1.14,
-    "rs_rating": 37
+    "rs_rating": 39
   },
   {
     "symbol": "2316",
     "score": -1.17,
-    "rs_rating": 37
+    "rs_rating": 38
   },
   {
     "symbol": "1527",
     "score": -1.18,
-    "rs_rating": 36
+    "rs_rating": 38
   },
   {
     "symbol": "1521",
     "score": -1.22,
-    "rs_rating": 36
+    "rs_rating": 38
   },
   {
     "symbol": "1809",
     "score": -1.37,
-    "rs_rating": 36
+    "rs_rating": 38
   },
   {
     "symbol": "2505",
     "score": -1.37,
-    "rs_rating": 36
+    "rs_rating": 38
   },
   {
     "symbol": "1471",
     "score": -1.39,
-    "rs_rating": 36
+    "rs_rating": 37
   },
   {
     "symbol": "2471",
     "score": -1.4,
-    "rs_rating": 35
+    "rs_rating": 37
   },
   {
     "symbol": "1234",
     "score": -1.43,
-    "rs_rating": 35
+    "rs_rating": 37
   },
   {
     "symbol": "1539",
     "score": -1.45,
-    "rs_rating": 35
+    "rs_rating": 37
   },
   {
     "symbol": "2388",
     "score": -1.45,
-    "rs_rating": 35
+    "rs_rating": 36
   },
   {
     "symbol": "1524",
     "score": -1.48,
-    "rs_rating": 34
+    "rs_rating": 36
   },
   {
     "symbol": "2431",
     "score": -1.48,
-    "rs_rating": 34
+    "rs_rating": 36
   },
   {
     "symbol": "1312",
     "score": -1.5,
-    "rs_rating": 34
+    "rs_rating": 36
   },
   {
     "symbol": "1454",
     "score": -1.51,
-    "rs_rating": 34
+    "rs_rating": 36
   },
   {
     "symbol": "1535",
     "score": -1.52,
-    "rs_rating": 34
+    "rs_rating": 35
   },
   {
     "symbol": "2428",
     "score": -1.52,
-    "rs_rating": 33
+    "rs_rating": 35
   },
   {
     "symbol": "2477",
     "score": -1.53,
-    "rs_rating": 33
+    "rs_rating": 35
   },
   {
     "symbol": "2012",
     "score": -1.54,
-    "rs_rating": 33
+    "rs_rating": 35
   },
   {
     "symbol": "1215",
     "score": -1.57,
-    "rs_rating": 33
+    "rs_rating": 34
   },
   {
     "symbol": "2543",
     "score": -1.57,
-    "rs_rating": 33
+    "rs_rating": 34
   },
   {
     "symbol": "2007",
     "score": -1.61,
-    "rs_rating": 32
+    "rs_rating": 34
   },
   {
     "symbol": "1436",
     "score": -1.74,
-    "rs_rating": 32
+    "rs_rating": 34
+  },
+  {
+    "symbol": "3050",
+    "score": -1.79,
+    "rs_rating": 34
   },
   {
     "symbol": "1460",
     "score": -1.82,
-    "rs_rating": 32
+    "rs_rating": 33
   },
   {
     "symbol": "2038",
     "score": -1.9,
-    "rs_rating": 32
+    "rs_rating": 33
   },
   {
     "symbol": "1760",
     "score": -1.93,
-    "rs_rating": 32
+    "rs_rating": 33
   },
   {
     "symbol": "1325",
     "score": -1.94,
-    "rs_rating": 31
+    "rs_rating": 33
   },
   {
     "symbol": "2254",
     "score": -1.99,
-    "rs_rating": 31
+    "rs_rating": 32
   },
   {
     "symbol": "1618",
     "score": -2.0,
-    "rs_rating": 31
+    "rs_rating": 32
   },
   {
     "symbol": "1443",
     "score": -2.02,
-    "rs_rating": 31
+    "rs_rating": 32
   },
   {
     "symbol": "1432",
     "score": -2.03,
-    "rs_rating": 31
+    "rs_rating": 32
   },
   {
     "symbol": "1441",
     "score": -2.03,
-    "rs_rating": 30
+    "rs_rating": 31
   },
   {
     "symbol": "2450",
     "score": -2.19,
-    "rs_rating": 30
+    "rs_rating": 31
   },
   {
     "symbol": "1503",
     "score": -2.2,
-    "rs_rating": 30
+    "rs_rating": 31
+  },
+  {
+    "symbol": "8213",
+    "score": -2.23,
+    "rs_rating": 31
   },
   {
     "symbol": "1337",
     "score": -2.25,
-    "rs_rating": 30
+    "rs_rating": 31
   },
   {
     "symbol": "2414",
@@ -1707,21 +1552,26 @@
   {
     "symbol": "1324",
     "score": -2.33,
-    "rs_rating": 29
+    "rs_rating": 30
   },
   {
     "symbol": "1616",
     "score": -2.33,
-    "rs_rating": 29
+    "rs_rating": 30
   },
   {
     "symbol": "1472",
     "score": -2.34,
-    "rs_rating": 29
+    "rs_rating": 30
   },
   {
     "symbol": "1560",
     "score": -2.34,
+    "rs_rating": 29
+  },
+  {
+    "symbol": "6189",
+    "score": -2.39,
     "rs_rating": 29
   },
   {
@@ -1732,17 +1582,12 @@
   {
     "symbol": "2313",
     "score": -2.48,
-    "rs_rating": 28
-  },
-  {
-    "symbol": "2731",
-    "score": -2.51,
-    "rs_rating": 28
+    "rs_rating": 29
   },
   {
     "symbol": "1506",
     "score": -2.55,
-    "rs_rating": 28
+    "rs_rating": 29
   },
   {
     "symbol": "1735",
@@ -1752,15 +1597,20 @@
   {
     "symbol": "2373",
     "score": -2.66,
-    "rs_rating": 27
+    "rs_rating": 28
   },
   {
     "symbol": "1340",
     "score": -2.68,
-    "rs_rating": 27
+    "rs_rating": 28
   },
   {
     "symbol": "1522",
+    "score": -2.7,
+    "rs_rating": 28
+  },
+  {
+    "symbol": "5519",
     "score": -2.7,
     "rs_rating": 27
   },
@@ -1777,12 +1627,12 @@
   {
     "symbol": "2439",
     "score": -2.75,
-    "rs_rating": 26
+    "rs_rating": 27
   },
   {
     "symbol": "2498",
     "score": -2.75,
-    "rs_rating": 26
+    "rs_rating": 27
   },
   {
     "symbol": "1109",
@@ -1800,14 +1650,9 @@
     "rs_rating": 26
   },
   {
-    "symbol": "2504",
-    "score": -2.86,
-    "rs_rating": 25
-  },
-  {
     "symbol": "1776",
     "score": -2.91,
-    "rs_rating": 25
+    "rs_rating": 26
   },
   {
     "symbol": "2420",
@@ -1827,12 +1672,12 @@
   {
     "symbol": "1418",
     "score": -3.12,
-    "rs_rating": 24
+    "rs_rating": 25
   },
   {
     "symbol": "1445",
     "score": -3.19,
-    "rs_rating": 24
+    "rs_rating": 25
   },
   {
     "symbol": "2211",
@@ -1852,7 +1697,7 @@
   {
     "symbol": "2453",
     "score": -3.45,
-    "rs_rating": 23
+    "rs_rating": 24
   },
   {
     "symbol": "1410",
@@ -1877,16 +1722,11 @@
   {
     "symbol": "2488",
     "score": -3.65,
-    "rs_rating": 22
+    "rs_rating": 23
   },
   {
     "symbol": "2374",
     "score": -3.68,
-    "rs_rating": 22
-  },
-  {
-    "symbol": "7765",
-    "score": -3.73,
     "rs_rating": 22
   },
   {
@@ -1902,7 +1742,7 @@
   {
     "symbol": "1220",
     "score": -3.87,
-    "rs_rating": 21
+    "rs_rating": 22
   },
   {
     "symbol": "1512",
@@ -1922,7 +1762,12 @@
   {
     "symbol": "1459",
     "score": -4.09,
-    "rs_rating": 20
+    "rs_rating": 21
+  },
+  {
+    "symbol": "3135",
+    "score": -4.1,
+    "rs_rating": 21
   },
   {
     "symbol": "2462",
@@ -1935,24 +1780,14 @@
     "rs_rating": 20
   },
   {
-    "symbol": "7823",
-    "score": -4.19,
-    "rs_rating": 20
-  },
-  {
-    "symbol": "7821",
-    "score": -4.2,
-    "rs_rating": 20
-  },
-  {
     "symbol": "2342",
     "score": -4.24,
-    "rs_rating": 19
+    "rs_rating": 20
   },
   {
     "symbol": "2482",
     "score": -4.25,
-    "rs_rating": 19
+    "rs_rating": 20
   },
   {
     "symbol": "1413",
@@ -1972,17 +1807,12 @@
   {
     "symbol": "2365",
     "score": -4.34,
-    "rs_rating": 18
-  },
-  {
-    "symbol": "2904",
-    "score": -4.44,
-    "rs_rating": 18
+    "rs_rating": 19
   },
   {
     "symbol": "2317",
     "score": -4.46,
-    "rs_rating": 18
+    "rs_rating": 19
   },
   {
     "symbol": "2478",
@@ -1997,7 +1827,12 @@
   {
     "symbol": "1476",
     "score": -4.7,
-    "rs_rating": 17
+    "rs_rating": 18
+  },
+  {
+    "symbol": "7740",
+    "score": -4.72,
+    "rs_rating": 18
   },
   {
     "symbol": "2514",
@@ -2022,7 +1857,7 @@
   {
     "symbol": "1537",
     "score": -4.96,
-    "rs_rating": 16
+    "rs_rating": 17
   },
   {
     "symbol": "2457",
@@ -2067,7 +1902,7 @@
   {
     "symbol": "2434",
     "score": -5.73,
-    "rs_rating": 15
+    "rs_rating": 14
   },
   {
     "symbol": "1446",
@@ -2112,7 +1947,7 @@
   {
     "symbol": "2231",
     "score": -6.53,
-    "rs_rating": 13
+    "rs_rating": 12
   },
   {
     "symbol": "1597",
@@ -2137,7 +1972,7 @@
   {
     "symbol": "1582",
     "score": -7.18,
-    "rs_rating": 12
+    "rs_rating": 11
   },
   {
     "symbol": "1529",
@@ -2155,14 +1990,9 @@
     "rs_rating": 11
   },
   {
-    "symbol": "2540",
-    "score": -7.96,
-    "rs_rating": 11
-  },
-  {
     "symbol": "2349",
     "score": -7.97,
-    "rs_rating": 11
+    "rs_rating": 10
   },
   {
     "symbol": "1587",
@@ -2187,7 +2017,7 @@
   {
     "symbol": "2495",
     "score": -8.25,
-    "rs_rating": 10
+    "rs_rating": 9
   },
   {
     "symbol": "2305",
@@ -2207,21 +2037,16 @@
   {
     "symbol": "1533",
     "score": -8.79,
-    "rs_rating": 9
+    "rs_rating": 8
   },
   {
     "symbol": "2355",
     "score": -8.97,
-    "rs_rating": 9
+    "rs_rating": 8
   },
   {
     "symbol": "2425",
     "score": -9.09,
-    "rs_rating": 8
-  },
-  {
-    "symbol": "6515",
-    "score": -9.15,
     "rs_rating": 8
   },
   {
@@ -2237,7 +2062,7 @@
   {
     "symbol": "2493",
     "score": -9.37,
-    "rs_rating": 8
+    "rs_rating": 7
   },
   {
     "symbol": "2441",
@@ -2250,14 +2075,19 @@
     "rs_rating": 7
   },
   {
+    "symbol": "6176",
+    "score": -9.95,
+    "rs_rating": 7
+  },
+  {
     "symbol": "2440",
     "score": -10.02,
-    "rs_rating": 7
+    "rs_rating": 6
   },
   {
     "symbol": "2401",
     "score": -10.22,
-    "rs_rating": 7
+    "rs_rating": 6
   },
   {
     "symbol": "1516",
@@ -2277,26 +2107,16 @@
   {
     "symbol": "2303",
     "score": -10.62,
-    "rs_rating": 6
+    "rs_rating": 5
   },
   {
     "symbol": "1218",
     "score": -10.86,
-    "rs_rating": 6
+    "rs_rating": 5
   },
   {
     "symbol": "1538",
     "score": -11.0,
-    "rs_rating": 5
-  },
-  {
-    "symbol": "6657",
-    "score": -11.06,
-    "rs_rating": 5
-  },
-  {
-    "symbol": "6695",
-    "score": -11.14,
     "rs_rating": 5
   },
   {
@@ -2307,7 +2127,7 @@
   {
     "symbol": "2329",
     "score": -11.36,
-    "rs_rating": 5
+    "rs_rating": 4
   },
   {
     "symbol": "2345",
@@ -2332,7 +2152,7 @@
   {
     "symbol": "2363",
     "score": -11.66,
-    "rs_rating": 4
+    "rs_rating": 3
   },
   {
     "symbol": "2375",
@@ -2345,11 +2165,6 @@
     "rs_rating": 3
   },
   {
-    "symbol": "6415",
-    "score": -12.23,
-    "rs_rating": 3
-  },
-  {
     "symbol": "2458",
     "score": -12.56,
     "rs_rating": 3
@@ -2357,7 +2172,7 @@
   {
     "symbol": "2485",
     "score": -13.02,
-    "rs_rating": 3
+    "rs_rating": 2
   },
   {
     "symbol": "2338",
@@ -2382,11 +2197,6 @@
   {
     "symbol": "2497",
     "score": -14.15,
-    "rs_rating": 2
-  },
-  {
-    "symbol": "6908",
-    "score": -14.19,
     "rs_rating": 1
   },
   {
@@ -2407,11 +2217,6 @@
   {
     "symbol": "2237",
     "score": -19.18,
-    "rs_rating": 1
-  },
-  {
-    "symbol": "8028",
-    "score": -19.46,
     "rs_rating": 1
   },
   {
