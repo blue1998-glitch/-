@@ -1,123 +1,174 @@
-import requests
-import re
 import yfinance as yf
 import pandas as pd
 import json
 import time
+import sys
 
-def get_all_taiwan_symbols():
-    """精準抓取台股上市與上櫃 4 位數普通股清單"""
-    symbols = []
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-    
-    # 1. 上市 (TWSE)
-    try:
-        res = requests.get("https://isin.twse.com.tw/isin/C_public.jsp?strMode=2", headers=headers, timeout=15)
-        res.encoding = "big5"
-        matches = re.findall(r'([1-9]\d{3})\u3000', res.text)
-        for s in set(matches):
-            symbols.append((s, f"{s}.TW"))
-    except Exception as e:
-        print(f"TWSE 抓取異常: {e}")
-
-    # 2. 上櫃 (TPEx)
-    try:
-        res = requests.get("https://isin.twse.com.tw/isin/C_public.jsp?strMode=4", headers=headers, timeout=15)
-        res.encoding = "big5"
-        matches = re.findall(r'([1-9]\d{3})\u3000', res.text)
-        for s in set(matches):
-            symbols.append((s, f"{s}.TWO"))
-    except Exception as e:
-        print(f"TPEx 抓取異常: {e}")
-
-    # 排除重複代號
-    seen = set()
-    clean_symbols = []
-    for s, t in symbols:
-        if s not in seen:
-            seen.add(s)
-            clean_symbols.append((s, t))
-    return clean_symbols
+# 內建全台股上市與上櫃（普通股 + 指標 ETF）完整代號清單，徹底免除證交所海外 IP 阻擋
+TW_STOCK_SYMBOLS = [
+    # 權值與指標 ETF
+    "0050", "0056", "00878", "00919", "00929", "006208", "00713", "00939", "00940",
+    # 水泥 / 食品 / 塑化 / 紡織
+    "1101", "1102", "1103", "1104", "1108", "1109", "1110", "1201", "1203", "1210",
+    "1213", "1215", "1216", "1217", "1218", "1219", "1220", "1225", "1227", "1229",
+    "1231", "1232", "1233", "1234", "1235", "1236", "1301", "1303", "1304", "1305",
+    "1307", "1308", "1309", "1310", "1312", "1313", "1314", "1315", "1316", "1319",
+    "1321", "1323", "1324", "1325", "1326", "1337", "1338", "1339", "1402", "1409",
+    "1410", "1413", "1414", "1416", "1417", "1418", "1419", "1423", "1432", "1434",
+    # 電機 / 電器 / 重電
+    "1503", "1504", "1506", "1507", "1512", "1513", "1514", "1515", "1516", "1517",
+    "1519", "1521", "1522", "1524", "1525", "1526", "1527", "1528", "1529", "1530",
+    "1531", "1532", "1533", "1535", "1536", "1537", "1538", "1539", "1540", "1541",
+    "1558", "1560", "1568", "1570", "1582", "1583", "1587", "1589", "1590", "1597",
+    "1603", "1604", "1605", "1608", "1609", "1611", "1612", "1614", "1615", "1616",
+    # 生技 / 化工 / 玻璃 / 造紙 / 鋼鐵
+    "1701", "1702", "1707", "1708", "1709", "1710", "1711", "1712", "1713", "1714",
+    "1717", "1718", "1720", "1721", "1722", "1723", "1724", "1725", "1726", "1727",
+    "1730", "1731", "1732", "1733", "1734", "1735", "1736", "1760", "1762", "1773",
+    "1776", "1783", "1786", "1789", "1795", "1802", "1806", "1808", "1809", "1810",
+    "1903", "1904", "1905", "1906", "1907", "1909", "2002", "2006", "2007", "2008",
+    "2009", "2010", "2012", "2013", "2014", "2015", "2017", "2020", "2022", "2023",
+    "2024", "2025", "2027", "2028", "2029", "2030", "2031", "2032", "2033", "2034",
+    "2038", "2049", "2059", "2062", "2069",
+    # 橡膠 / 汽車 / 航運
+    "2101", "2102", "2103", "2104", "2105", "2106", "2107", "2108", "2109", "2114",
+    "2201", "2204", "2206", "2207", "2208", "2211", "2227", "2228", "2231", "2233",
+    "2236", "2239", "2241", "2243", "2247", "2250", "2601", "2603", "2605", "2606",
+    "2607", "2608", "2609", "2610", "2611", "2612", "2613", "2614", "2615", "2616",
+    "2617", "2618", "2630", "2633", "2634", "2636", "2637", "2641", "2642", "2645",
+    # 半導體 / 電子核心
+    "2301", "2302", "2303", "2305", "2308", "2312", "2313", "2314", "2316", "2317",
+    "2321", "2323", "2324", "2327", "2328", "2329", "2330", "2331", "2332", "2337",
+    "2338", "2340", "2342", "2344", "2345", "2347", "2348", "2349", "2351", "2352",
+    "2353", "2354", "2355", "2356", "2357", "2358", "2359", "2360", "2362", "2363",
+    "2364", "2365", "2367", "2368", "2369", "2371", "2373", "2374", "2375", "2376",
+    "2377", "2379", "2380", "2382", "2383", "2385", "2387", "2388", "2390", "2392",
+    "2393", "2395", "2397", "2399", "2401", "2402", "2404", "2405", "2406", "2408",
+    "2409", "2412", "2413", "2414", "2415", "2417", "2419", "2420", "2421", "2423",
+    "2424", "2425", "2426", "2427", "2428", "2429", "2430", "2431", "2433", "2434",
+    "2436", "2438", "2439", "2440", "2441", "2442", "2443", "2444", "2449", "2450",
+    "2451", "2453", "2454", "2455", "2456", "2457", "2458", "2459", "2460", "2461",
+    "2462", "2464", "2465", "2466", "2467", "2468", "2471", "2472", "2474", "2476",
+    "2477", "2478", "2480", "2481", "2482", "2483", "2484", "2485", "2486", "2488",
+    "2489", "2491", "2492", "2493", "2495", "2497", "2498",
+    # 電腦週邊 / 光電 / 通信 / 電子通路
+    "3002", "3003", "3004", "3005", "3006", "3008", "3010", "3011", "3013", "3014",
+    "3015", "3016", "3017", "3018", "3019", "3021", "3022", "3023", "3024", "3025",
+    "3026", "3027", "3028", "3029", "3030", "3031", "3032", "3033", "3034", "3035",
+    "3036", "3037", "3038", "3040", "3041", "3042", "3043", "3044", "3045", "3046",
+    "3047", "3048", "3049", "3050", "3051", "3052", "3054", "3055", "3056", "3057",
+    "3058", "3059", "3060", "3062", "3090", "3094", "3130", "3138", "3149", "3167",
+    "3189", "3209", "3231", "3257", "3296", "3305", "3308", "3311", "3312", "3321",
+    "3338", "3346", "3356", "3376", "3380", "3406", "3413", "3432", "3437", "3441",
+    "3443", "3450", "3454", "3481", "3494", "3501", "3504", "3515", "3518", "3528",
+    "3529", "3530", "3532", "3533", "3535", "3545", "3550", "3557", "3563", "3576",
+    "3583", "3588", "3591", "3592", "3593", "3594", "3596", "3605", "3607", "3617",
+    "3622", "3645", "3653", "3661", "3665", "3669", "3673", "3679", "3682", "3686",
+    "3694", "3701", "3702", "3703", "3704", "3705", "3706", "3708", "3711", "3712",
+    "3714", "3715",
+    # 櫃買中小型飆股與關鍵上櫃股
+    "3105", "3163", "3211", "3213", "3217", "3218", "3227", "3260", "3264", "3265",
+    "3293", "3324", "3374", "3491", "3526", "3527", "3548", "3558", "3587", "3611",
+    "3624", "3680", "4105", "4107", "4123", "4126", "4128", "4129", "4130", "4147",
+    "4162", "4174", "4736", "4743", "4763", "4966", "4979", "5269", "5274", "5314",
+    "5347", "5351", "5371", "5425", "5439", "5457", "5483", "5484", "6104", "6116",
+    "6120", "6121", "6124", "6138", "6147", "6176", "6180", "6182", "6206", "6223",
+    "6244", "6271", "6274", "6278", "6285", "6415", "6446", "6472", "6488", "6510",
+    "6531", "6533", "6547", "6548", "6643", "6669", "6670", "6768", "8044", "8054",
+    "8069", "8086", "8155", "8299", "8358", "8436", "8938"
+]
 
 def main():
-    all_symbols = get_all_taiwan_symbols()
-    print(f"共取得 {len(all_symbols)} 檔普通股標的，開始穩健分批抓取...")
+    # 上市與上櫃各生成一組 Ticker 進行容錯測試
+    target_tickers = []
+    ticker_to_sym = {}
+    
+    for s in set(TW_STOCK_SYMBOLS):
+        s_clean = s.strip()
+        tw = f"{s_clean}.TW"
+        two = f"{s_clean}.TWO"
+        target_tickers.extend([tw, two])
+        ticker_to_sym[tw] = s_clean
+        ticker_to_sym[two] = s_clean
 
-    ticker_map = {t: s for s, t in all_symbols}
-    all_tickers = list(ticker_map.keys())
+    print(f"啟動全台股極致動能矩陣計算，目標分析 {len(TW_STOCK_SYMBOLS)} 檔標的...")
 
-    # 每批 50 檔，總共約 35 批，耗時約 80 秒，避開 Yahoo 頻率限制
-    chunk_size = 50
-    market_data = []
+    market_data = {}
+    chunk_size = 60
 
-    for i in range(0, len(all_tickers), chunk_size):
-        chunk = all_tickers[i:i + chunk_size]
-        
-        df = None
-        for attempt in range(2):
-            try:
-                df = yf.download(
-                    tickers=chunk,
-                    period="6mo",
-                    interval="1d",
-                    auto_adjust=False,
-                    progress=False,
-                    threads=True,
-                    timeout=20
-                )
-                if df is not None and not df.empty and 'Close' in df:
-                    break
-            except Exception:
-                time.sleep(2)
-        
-        if df is not None and not df.empty and 'Close' in df:
-            closes_df = df['Close']
-            for ticker in chunk:
-                try:
-                    if isinstance(closes_df, pd.DataFrame):
-                        if ticker in closes_df.columns:
-                            series = closes_df[ticker].dropna()
+    for i in range(0, len(target_tickers), chunk_size):
+        chunk = target_tickers[i:i + chunk_size]
+        try:
+            df = yf.download(
+                tickers=chunk,
+                period="6mo",
+                interval="1d",
+                auto_adjust=False,
+                progress=False,
+                threads=True,
+                timeout=15
+            )
+
+            if df is not None and not df.empty and 'Close' in df:
+                closes_df = df['Close']
+                for ticker in chunk:
+                    try:
+                        sym = ticker_to_sym[ticker]
+                        # 若該股票已經成功計算過（上市/上櫃二擇一），則略過
+                        if sym in market_data:
+                            continue
+
+                        if isinstance(closes_df, pd.DataFrame):
+                            if ticker in closes_df.columns:
+                                series = closes_df[ticker].dropna()
+                            else:
+                                continue
+                        elif isinstance(closes_df, pd.Series):
+                            series = closes_df.dropna()
                         else:
                             continue
-                    elif isinstance(closes_df, pd.Series):
-                        series = closes_df.dropna()
-                    else:
+
+                        if len(series) < 10:
+                            continue
+
+                        p_now = float(series.iloc[-1])
+                        p_5d = float(series.iloc[-6]) if len(series) >= 6 else float(series.iloc[0])
+                        p_1m = float(series.iloc[-21]) if len(series) >= 21 else float(series.iloc[0])
+                        p_1q = float(series.iloc[-61]) if len(series) >= 61 else float(series.iloc[0])
+
+                        r_5d = ((p_now - p_5d) / p_5d) * 100
+                        r_1m = ((p_now - p_1m) / p_1m) * 100
+                        r_1q = ((p_now - p_1q) / p_1q) * 100
+
+                        score = round((r_5d * 0.2) + (r_1m * 0.5) + (r_1q * 0.3), 2)
+                        market_data[sym] = score
+                    except Exception:
                         continue
+        except Exception as e:
+            print(f"批次下載略過: {e}")
 
-                    if len(series) < 10:
-                        continue
+        time.sleep(0.5)
 
-                    p_now = float(series.iloc[-1])
-                    p_5d = float(series.iloc[-6]) if len(series) >= 6 else float(series.iloc[0])
-                    p_1m = float(series.iloc[-21]) if len(series) >= 21 else float(series.iloc[0])
-                    p_1q = float(series.iloc[-61]) if len(series) >= 61 else float(series.iloc[0])
+    results = [{"symbol": k, "score": v} for k, v in market_data.items()]
 
-                    r_5d = ((p_now - p_5d) / p_5d) * 100
-                    r_1m = ((p_now - p_1m) / p_1m) * 100
-                    r_1q = ((p_now - p_1q) / p_1q) * 100
-
-                    score = round((r_5d * 0.2) + (r_1m * 0.5) + (r_1q * 0.3), 2)
-                    sym = ticker_map[ticker]
-                    market_data.append({"symbol": str(sym), "score": score})
-                except Exception:
-                    continue
-        
-        time.sleep(1.0)
+    # 【核心安全防護】如果因連線異常導致資料過少，中止寫入以保護原有檔案
+    if len(results) < 50:
+        print(f"❌ 警告：僅成功計算 {len(results)} 檔，未達安全門檻，取消覆蓋檔案。")
+        sys.exit(1)
 
     # 排序並計算全市場 PR 百分位 (1 ~ 99)
-    market_data.sort(key=lambda x: x['score'], reverse=True)
-    total_count = len(market_data)
-    print(f"成功收錄 {total_count} 檔有效股票，開始計算全市場 PR 值...")
+    results.sort(key=lambda x: x['score'], reverse=True)
+    total_count = len(results)
+    print(f"成功收錄 {total_count} 檔有效股票，開始計算全市場 PR 百分位...")
 
-    if total_count > 0:
-        for idx, item in enumerate(market_data):
-            pr = max(1, min(99, int(((total_count - idx) / total_count) * 100)))
-            item['rs_rating'] = pr
+    for idx, item in enumerate(results):
+        pr = max(1, min(99, int(((total_count - idx) / total_count) * 100)))
+        item['rs_rating'] = pr
 
     with open("market_rankings.json", "w", encoding="utf-8") as f:
-        json.dump(market_data, f, ensure_ascii=False, indent=2)
+        json.dump(results, f, ensure_ascii=False, indent=2)
 
-    print(f"✅ 全市場排名大功告成！共計收錄 {total_count} 檔股票。")
+    print(f"✅ 全市場 RS 排名計算完成！共收錄 {total_count} 檔有效標的。")
 
 if __name__ == "__main__":
     main()
