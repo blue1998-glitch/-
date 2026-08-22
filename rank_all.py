@@ -1,42 +1,87 @@
+import requests
+import re
 import yfinance as yf
 import pandas as pd
 import json
-import time
+import concurrent.futures
 
-# 這裡是一個簡化的全市場代號清單 (你可以持續增加)
-# 為了節省時間，你可以先放 100 檔強勢股代號，未來再擴充
-symbols = ["2330", "2454", "2317", "3441", "3008"] # 請自行擴充你的關注清單
-market_data = []
-
-for sym in symbols:
+def get_all_taiwan_symbols():
+    """自動從證交所與櫃買中心抓取全台股 4 位數普通股清單"""
+    symbols = []
+    
+    # 1. 抓取上市股票 (TWSE)
     try:
-        ticker_tw = f"{sym}.TW"
-        ticker_two = f"{sym}.TWO"
-        # 嘗試抓 TW 或 TWO
-        stock = yf.Ticker(ticker_tw)
+        res = requests.get("https://isin.twse.com.tw/isin/C_public.jsp?strMode=2", timeout=15)
+        res.encoding = "big5"
+        tw_matches = re.findall(r'(\d{4})\u3000', res.text)
+        for s in set(tw_matches):
+            symbols.append((s, f"{s}.TW"))
+    except Exception as e:
+        print(f"TWSE 抓取失敗: {e}")
+
+    # 2. 抓取上櫃股票 (TPEx)
+    try:
+        res = requests.get("https://isin.twse.com.tw/isin/C_public.jsp?strMode=4", timeout=15)
+        res.encoding = "big5"
+        two_matches = re.findall(r'(\d{4})\u3000', res.text)
+        for s in set(two_matches):
+            symbols.append((s, f"{s}.TWO"))
+    except Exception as e:
+        print(f"TPEx 抓取失敗: {e}")
+
+    return symbols
+
+def process_single_stock(stock_tuple):
+    """計算單檔股票極致動能加權分數"""
+    sym, ticker = stock_tuple
+    try:
+        stock = yf.Ticker(ticker)
         hist = stock.history(period="6mo")
-        if len(hist) < 61:
-            stock = yf.Ticker(ticker_two)
-            hist = stock.history(period="6mo")
-            
-        if len(hist) >= 61:
-            r_5d = ((hist['Close'].iloc[-1] - hist['Close'].iloc[-6]) / hist['Close'].iloc[-6]) * 100
-            r_1m = ((hist['Close'].iloc[-1] - hist['Close'].iloc[-21]) / hist['Close'].iloc[-21]) * 100
-            r_1q = ((hist['Close'].iloc[-1] - hist['Close'].iloc[-61]) / hist['Close'].iloc[-61]) * 100
-            
-            # 使用你的加權權重
-            score = (r_5d * 0.2) + (r_1m * 0.5) + (r_1q * 0.3)
-            market_data.append({"symbol": sym, "score": score})
-        time.sleep(0.5) # 避免 Yahoo 擋請求
+        if hist.empty or len(hist) < 10:
+            return None
+        
+        closes = hist['Close']
+        p_now = closes.iloc[-1]
+        p_5d = closes.iloc[-6] if len(closes) >= 6 else closes.iloc[0]
+        p_1m = closes.iloc[-21] if len(closes) >= 21 else closes.iloc[0]
+        p_1q = closes.iloc[-61] if len(closes) >= 61 else closes.iloc[0]
+
+        r_5d = ((p_now - p_5d) / p_5d) * 100
+        r_1m = ((p_now - p_1m) / p_1m) * 100
+        r_1q = ((p_now - p_1q) / p_1q) * 100
+
+        # 極致動能權重：5日 20%、1個月 50%、1季 30%
+        score = round((r_5d * 0.2) + (r_1m * 0.5) + (r_1q * 0.3), 2)
+        return {"symbol": sym, "score": score}
     except:
-        continue
+        return None
 
-# 排序並計算排名
-market_data.sort(key=lambda x: x['score'], reverse=True)
-for i, item in enumerate(market_data):
-    # 算百分位 PR 值
-    pr = int((len(market_data) - i) / len(market_data) * 100)
-    item['rs_rating'] = pr
+def main():
+    all_symbols = get_all_taiwan_symbols()
+    print(f"共取得 {len(all_symbols)} 檔台股標的，開始平行運算動能...")
 
-with open("market_rankings.json", "w") as f:
-    json.dump(market_data, f)
+    market_data = []
+    # 使用 12 條線程平行加速計算
+    with concurrent.futures.ThreadPoolExecutor(max_workers=12) as executor:
+        results = list(executor.map(process_single_stock, all_symbols))
+
+    market_data = [r for r in results if r is not None]
+    
+    # 依照綜合動能分數由大到小排序
+    market_data.sort(key=lambda x: x['score'], reverse=True)
+    total_count = len(market_data)
+    print(f"成功計算 {total_count} 檔有效股票，開始計算全市場 PR 百分位...")
+
+    # 計算全市場百分位 PR 值 (1 ~ 99)
+    if total_count > 0:
+        for i, item in enumerate(market_data):
+            pr = max(1, min(99, int(((total_count - i) / total_count) * 100)))
+            item['rs_rating'] = pr
+
+    # 輸出至 market_rankings.json
+    with open("market_rankings.json", "w", encoding="utf-8") as f:
+        json.dump(market_data, f, ensure_ascii=False, indent=2)
+    print("全市場 RS 排名計算完成並已儲存！")
+
+if __name__ == "__main__":
+    main()
