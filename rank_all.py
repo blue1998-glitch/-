@@ -6,54 +6,55 @@ import requests
 import sys
 
 def get_tw_market_tickers():
-    """分別向官方 API 抓取上市與上櫃清單，並精確標註 .TW 與 .TWO"""
-    target_list = []  # 存 (symbol, ticker)
+    """抓取全台股代號、中文簡稱與上市櫃類別"""
+    target_list = []
     headers = {"User-Agent": "Mozilla/5.0"}
     
-    # 1. 抓取上市股票 (TWSE) -> 對應 .TW
+    # 1. 上市 (TWSE)
     try:
         url_twse = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
         res = requests.get(url_twse, headers=headers, timeout=12)
         if res.status_code == 200:
             for row in res.json():
                 c = str(row.get('公司代號', '')).strip()
+                n = str(row.get('公司簡稱', row.get('公司名稱', c))).strip()
                 if len(c) == 4 and c.isdigit():
-                    target_list.append((c, f"{c}.TW"))
+                    target_list.append({"symbol": c, "name": n, "market": "上市", "ticker": f"{c}.TW"})
     except Exception as e:
         print(f"TWSE API 連線異常: {e}")
 
-    # 2. 抓取上櫃股票 (TPEx) -> 對應 .TWO
+    # 2. 上櫃 (TPEx)
     try:
         url_tpex = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
         res = requests.get(url_tpex, headers=headers, timeout=12)
         if res.status_code == 200:
             for row in res.json():
                 c = str(row.get('SecuritiesCompanyCode', row.get('公司代號', ''))).strip()
+                n = str(row.get('CompanyAbbreviation', row.get('SecuritiesCompanyName', row.get('公司簡稱', c)))).strip()
                 if len(c) == 4 and c.isdigit():
-                    target_list.append((c, f"{c}.TWO"))
+                    target_list.append({"symbol": c, "name": n, "market": "上櫃", "ticker": f"{c}.TWO"})
     except Exception as e:
         print(f"TPEx API 連線異常: {e}")
 
     # 去重
     unique_map = {}
-    for s, t in target_list:
-        if s not in unique_map:
-            unique_map[s] = t
+    for item in target_list:
+        if item["symbol"] not in unique_map:
+            unique_map[item["symbol"]] = item
 
-    return [(k, v) for k, v in unique_map.items()]
+    return list(unique_map.values())
 
 def main():
-    ticker_pairs = get_tw_market_tickers()
-    print(f"成功取得台股全市場 {len(ticker_pairs)} 檔有效標的（含上市與上櫃），開始批次下載...")
+    stock_info_list = get_tw_market_tickers()
+    print(f"成功取得台股全市場 {len(stock_info_list)} 檔標的資料，開始批次下載動能...")
 
-    if len(ticker_pairs) < 500:
+    if len(stock_info_list) < 500:
         print("❌ 取得代號數量不足，取消覆蓋檔案。")
         sys.exit(1)
 
-    all_tickers = [t for s, t in ticker_pairs]
-    ticker_to_sym = {t: s for s, t in ticker_pairs}
+    all_tickers = [item["ticker"] for item in stock_info_list]
+    ticker_to_info = {item["ticker"]: item for item in stock_info_list}
 
-    # 每批 60 檔，發送精準代號，避免 Yahoo 丟失資料
     chunk_size = 60
     market_data = []
 
@@ -98,8 +99,14 @@ def main():
                         r_1q = ((p_now - p_1q) / p_1q) * 100
 
                         score = round((r_5d * 0.2) + (r_1m * 0.5) + (r_1q * 0.3), 2)
-                        sym = ticker_to_sym[ticker]
-                        market_data.append({"symbol": sym, "score": score})
+                        info = ticker_to_info[ticker]
+                        
+                        market_data.append({
+                            "symbol": info["symbol"],
+                            "name": info["name"],
+                            "market": info["market"],
+                            "score": score
+                        })
                     except Exception:
                         continue
         except Exception:
