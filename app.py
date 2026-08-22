@@ -23,34 +23,38 @@ def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-# 【核心功能】優先讀取本機排程檔案，若伺服器未同步則直接連網抓取 GitHub 最新全市場排名
-@st.cache_data(ttl=300)
+# 【核心功能】全市場排名即時載入器
+@st.cache_data(ttl=60)
 def load_market_data():
-    # 1. 嘗試讀取伺服器本機檔案
+    # 1. 優先嘗試從伺服器本機讀取
     if os.path.exists("market_rankings.json"):
         try:
             with open("market_rankings.json", "r", encoding="utf-8") as f:
                 data = json.load(f)
-                if data:
-                    return data
-        except:
+                if isinstance(data, list) and len(data) > 0:
+                    return data, "本機檔案載入成功"
+        except Exception as e:
             pass
-            
-    # 2. 自動連線 GitHub Raw 抓取最新排名
+
+    # 2. 自動連線 GitHub 抓取最新檔案
     try:
         url = "https://raw.githubusercontent.com/blue1998-glitch/-/main/market_rankings.json"
-        res = requests.get(url, timeout=5)
+        res = requests.get(url, timeout=8)
         if res.status_code == 200:
-            return res.json()
-    except:
-        pass
-        
-    return []
+            data = res.json()
+            if isinstance(data, list) and len(data) > 0:
+                return data, "GitHub 線上同步成功"
+            else:
+                return [], f"GitHub 回傳空資料 (長度 0)"
+        else:
+            return [], f"連線失敗 (HTTP {res.status_code})"
+    except Exception as e:
+        return [], f"連線異常: {str(e)}"
 
-def get_rs_from_json(symbol):
-    data = load_market_data()
-    for item in data:
-        if str(item.get('symbol')).strip() == str(symbol).strip():
+def get_rs_from_json(symbol, market_list):
+    sym_clean = str(symbol).strip().upper()
+    for item in market_list:
+        if str(item.get('symbol', '')).strip().upper() == sym_clean:
             return item.get('rs_rating', 50)
     return 50
 
@@ -94,6 +98,15 @@ def calc_pnl(shares, avg_cost, current_price, fee_discount):
 
 # --- 介面開始 ---
 st.title("📈 順勢大師台股動能風控儀表板")
+
+# 載入全市場 RS 資料庫
+market_rankings, db_status = load_market_data()
+
+# 顯示頂部狀態診斷條
+if len(market_rankings) > 0:
+    st.success(f"🟢 全市場 RS 資料庫運作正常 ｜ 已載入 {len(market_rankings)} 檔標的排名 ｜ 狀態：{db_status}")
+else:
+    st.warning(f"🟡 RS 資料庫未載入成功 ｜ 狀態訊息：{db_status}（若專案為 Private，請至 GitHub 設為 Public）")
 
 # 1. 頂部大師參數自訂區
 with st.expander("⚙️ 順勢大師風控與動能參數設定（點此自訂）", expanded=False):
@@ -150,6 +163,7 @@ if not portfolio:
     st.info("目前尚無持倉，請點擊上方「➕ 新增持股」建立第一檔股票。")
 else:
     if st.button("🔄 刷新最新市價與動能評分"):
+        st.cache_data.clear()
         st.rerun()
 
     for idx, item in enumerate(portfolio):
@@ -161,8 +175,8 @@ else:
         shares = item['shares']
         stored_high = item.get('record_high', avg_cost)
 
-        # 讀取全市場排名 RS 與各期動能
-        rs_score = get_rs_from_json(sym)
+        # 讀取全市場排名 RS
+        rs_score = get_rs_from_json(sym, market_rankings)
         cur_price, max_high, ma20, r_5d, r_1m, r_1q = fetch_stock_and_momentum(sym, mkt, entry_d)
         if cur_price is None:
             cur_price, max_high, ma20 = avg_cost, stored_high, avg_cost
