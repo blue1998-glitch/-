@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime, date
 import json
 import os
+import requests
 
 st.set_page_config(page_title="順勢大師台股動能風控儀表板", layout="wide", initial_sidebar_state="collapsed")
 
@@ -22,17 +23,35 @@ def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-# 【核心功能】從 GitHub 自動排程生成的檔案中讀取 RS 排名
-def get_rs_from_json(symbol):
+# 【核心功能】優先讀取本機排程檔案，若伺服器未同步則直接連網抓取 GitHub 最新全市場排名
+@st.cache_data(ttl=300)
+def load_market_data():
+    # 1. 嘗試讀取伺服器本機檔案
     if os.path.exists("market_rankings.json"):
         try:
-            with open("market_rankings.json", "r") as f:
+            with open("market_rankings.json", "r", encoding="utf-8") as f:
                 data = json.load(f)
-                for item in data:
-                    if str(item['symbol']) == str(symbol):
-                        return item['rs_rating']
+                if data:
+                    return data
         except:
-            return 50
+            pass
+            
+    # 2. 自動連線 GitHub Raw 抓取最新排名
+    try:
+        url = "https://raw.githubusercontent.com/blue1998-glitch/-/main/market_rankings.json"
+        res = requests.get(url, timeout=5)
+        if res.status_code == 200:
+            return res.json()
+    except:
+        pass
+        
+    return []
+
+def get_rs_from_json(symbol):
+    data = load_market_data()
+    for item in data:
+        if str(item.get('symbol')).strip() == str(symbol).strip():
+            return item.get('rs_rating', 50)
     return 50
 
 def fetch_stock_and_momentum(symbol, market, entry_date_str):
