@@ -1,8 +1,8 @@
 name: Daily Ranking
 on:
   schedule:
-    - cron: '30 14 * * *' # 每天台灣時間 14:30 自動執行
-  workflow_dispatch: # 允許你手動按下按鈕執行
+    - cron: '30 6 * * 1-5' # 台灣時間週一至週五 14:30 自動執行 (UTC 06:30)
+  workflow_dispatch: # 允許隨時手動點擊執行
 
 jobs:
   run-ranker:
@@ -10,16 +10,18 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
-      - run: pip install yfinance pandas
-      - run: python rank_all.py
-      - name: Commit and push
+          python-version: '3.10'
+      - name: Install dependencies
+        run: pip install yfinance pandas requests
+      - name: Run ranking script
+        run: python rank_all.py
+      - name: Commit and push rankings
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add market_rankings.json
-          git commit -m "Update rankings"
+          git commit -m "Update full market rankings [skip ci]" || exit 0
           git push
