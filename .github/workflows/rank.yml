@@ -1,8 +1,8 @@
 name: Daily Ranking
 on:
   schedule:
-    - cron: '30 6 * * 1-5' # 台灣時間週一至週五 14:30 自動執行
-  workflow_dispatch: # 允許隨時手動點擊執行
+    - cron: '30 6 * * 1-5'
+  workflow_dispatch:
 
 jobs:
   run-ranker:
@@ -12,8 +12,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -26,8 +24,11 @@ jobs:
       - name: Run ranking script
         run: python rank_all.py
 
-      - name: Auto commit and push
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "Update full market rankings [skip ci]"
-          file_pattern: "market_rankings.json"
+      - name: Commit and push rankings
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull origin main --rebase
+          git add market_rankings.json
+          git commit -m "Update full market rankings [skip ci]" || exit 0
+          git push origin main
