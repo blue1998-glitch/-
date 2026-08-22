@@ -45,9 +45,10 @@ def fetch_stock_info(symbol, market, entry_date_str):
     except Exception as e:
         return None, None, None
 
-def calc_pnl(shares, avg_cost, current_price):
-    buy_fee_rate = 0.001425 * 0.6
-    sell_fee_rate = 0.001425 * 0.6
+def calc_pnl(shares, avg_cost, current_price, fee_discount):
+    # 手續費率 = 0.1425% * 券商折數 (例如 0.6 代表 6 折)
+    buy_fee_rate = 0.001425 * fee_discount
+    sell_fee_rate = 0.001425 * fee_discount
     tax_rate = 0.003
     
     total_buy_cost = (shares * avg_cost) * (1 + buy_fee_rate)
@@ -58,11 +59,24 @@ def calc_pnl(shares, avg_cost, current_price):
     return net_pnl, roi
 
 # --- 介面開始 ---
-st.title("📈 台股持倉管理與四重風控")
+st.title("📈 台股持倉管理與自訂風控系統")
+
+# 1. 自訂風控與費用參數區 (手機展開即可調整)
+with st.expander("⚙️ 自訂風控參數與手續費折數（點此展開調整）", expanded=False):
+    st.caption("調整下方滑桿後，所有持股的停損線、停利線、扣除稅費之淨損益將立即重新計算。")
+    c_set1, c_set2 = st.columns(2)
+    with c_set1:
+        stop_loss_pct = st.slider("🔴 停損趴數 (%)", min_value=1.0, max_value=20.0, value=7.0, step=0.5, format="-%0.1f%%")
+        pullback_target_pct = st.slider("🟣 高點回檔停利趴數 (%)", min_value=3.0, max_value=30.0, value=10.0, step=0.5, format="-%0.1f%%")
+        take_profit_pct = st.slider("🟢 波段目標停利趴數 (%)", min_value=5.0, max_value=100.0, value=20.0, step=1.0, format="+%0.0f%%")
+    with c_set2:
+        bias_threshold = st.slider("🟠 月線正乖離過熱閥值 (%)", min_value=10.0, max_value=60.0, value=30.0, step=1.0, format="+%0.0f%%")
+        discount_display = st.slider("💰 券商手續費折數（例：0.6 = 6 折，0.28 = 2.8 折）", min_value=0.1, max_value=1.0, value=0.6, step=0.01, format="%0.2f")
+        st.info(f"當前設定：停損 -{stop_loss_pct}% ｜ 高點回檔 -{pullback_target_pct}% ｜ 目標 +{take_profit_pct}% ｜ 乖離 +{bias_threshold}% ｜ 手續費 {discount_display*10:.1f} 折")
 
 portfolio = load_data()
 
-# 新增持股區
+# 2. 新增持股區
 with st.expander("➕ 新增持股 / 建倉", expanded=False):
     with st.form("add_stock_form"):
         col1, col2, col3 = st.columns(3)
@@ -93,6 +107,7 @@ with st.expander("➕ 新增持股 / 建倉", expanded=False):
             st.success(f"已新增 {new_item['name']} ({sym})")
             st.rerun()
 
+# 3. 持倉列表與風控即時判定
 if not portfolio:
     st.info("目前尚無持倉，請點擊上方「➕ 新增持股」建立第一檔股票。")
 else:
@@ -114,43 +129,53 @@ else:
             max_high = stored_high
             ma20 = avg_cost
 
+        # 鎖定進場後最高價（只升不降）
         actual_high = max(stored_high, avg_cost, max_high)
         if actual_high != stored_high:
             portfolio[idx]['record_high'] = actual_high
             save_data(portfolio)
 
-        net_pnl, roi = calc_pnl(shares, avg_cost, cur_price)
+        # 計算淨損益 (傳入自訂手續費折數)
+        net_pnl, roi = calc_pnl(shares, avg_cost, cur_price, discount_display)
         pullback_pct = round(((actual_high - cur_price) / actual_high) * 100, 1) if actual_high > 0 else 0
         bias_20 = round(((cur_price - ma20) / ma20) * 100, 1) if ma20 > 0 else 0
 
+        # 計算動態觸發門檻價格
+        stop_price = round(avg_cost * (1 - stop_loss_pct / 100), 2)
+        pullback_price = round(actual_high * (1 - pullback_target_pct / 100), 2)
+        tp_price = round(avg_cost * (1 + take_profit_pct / 100), 2)
+
+        # 動態風控判定
         status_text = "⚪ 持股續抱中"
         status_color = "gray"
         
-        if cur_price <= avg_cost * 0.93:
-            status_text = f"🔴 觸發 -7% 停損！建議全數出場（{shares} 股）"
+        if cur_price <= stop_price:
+            status_text = f"🔴 觸發 -{stop_loss_pct}% 停損線（{stop_price} 元）！建議全數出場（{shares} 股）"
             status_color = "red"
-        elif cur_price <= actual_high * 0.90 and cur_price > avg_cost:
-            status_text = f"🟣 觸發高點回檔 10%！波段高點 {actual_high}，目前回檔 {pullback_pct}%，建議減碼 30%~50%（{int(shares*0.3)}～{int(shares*0.5)} 股）"
+        elif cur_price <= pullback_price and cur_price > avg_cost:
+            status_text = f"🟣 觸發高點回檔 {pullback_target_pct}%（跌破 {pullback_price} 元）！波段高點 {actual_high} 元（目前回檔 {pullback_pct}%），建議減碼 30%~50%（{int(shares*0.3)}～{int(shares*0.5)} 股）"
             status_color = "purple"
-        elif cur_price >= avg_cost * 1.20:
-            status_text = f"🟢 達到 +20% 波段目標！建議減碼 30%~50%（{int(shares*0.3)}～{int(shares*0.5)} 股）"
+        elif cur_price >= tp_price:
+            status_text = f"🟢 達到 +{take_profit_pct}% 波段目標（突破 {tp_price} 元）！建議減碼 30%~50%（{int(shares*0.3)}～{int(shares*0.5)} 股）"
             status_color = "green"
-        elif bias_20 >= 30:
-            status_text = f"🟠 月線正乖離達 {bias_20}%！短線過熱，建議減碼 30%~50%"
+        elif bias_20 >= bias_threshold:
+            status_text = f"🟠 月線正乖離達 {bias_20}%（閥值 {bias_threshold}%）！短線過熱，建議減碼 30%~50%"
             status_color = "orange"
 
+        # 渲染單檔卡片
         with st.container():
             st.markdown("---")
             st.subheader(f"{name} ({sym}.{mkt})")
             
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("最新市價 / 均價", f"${cur_price}", f"均價: ${avg_cost}")
-            c2.metric("未實現損益 (扣稅費)", f"{net_pnl:+,} 元", f"{roi:+}%")
-            c3.metric("波段最高點 / 回檔", f"${actual_high}", f"回檔 {pullback_pct}%")
-            c4.metric("當前 20MA / 乖離", f"${ma20}", f"乖離 {bias_20}%")
+            c2.metric("未實現損益 (已扣稅費)", f"{net_pnl:+,} 元", f"{roi:+}%")
+            c3.metric(f"波段最高 / 回檔線 (-{pullback_target_pct}%)", f"${actual_high}", f"回檔價: ${pullback_price}")
+            c4.metric(f"當前 20MA / 乖離率", f"${ma20}", f"乖離 {bias_20}%")
 
             st.markdown(f"**風控狀態：** :{status_color}[{status_text}]")
 
+            # 加碼 / 減碼 / 刪除 操作區
             with st.expander(f"⚙️ 操作 {name} 持股（加碼 / 減碼 / 結清）"):
                 op_col1, op_col2, op_col3 = st.columns(3)
                 
