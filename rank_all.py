@@ -3,57 +3,62 @@ import pandas as pd
 import json
 import time
 import requests
-import re
 import sys
 
-def get_complete_tw_symbols():
-    """多管道獲取全台股 1,800+ 檔上市上櫃普通股清單"""
-    symbols = set()
+def get_tw_market_tickers():
+    """分別向官方 API 抓取上市與上櫃清單，並精確標註 .TW 與 .TWO"""
+    target_list = []  # 存 (symbol, ticker)
+    headers = {"User-Agent": "Mozilla/5.0"}
     
-    # 管道 1：透過政府資料開放平台 API (海外不擋連線)
+    # 1. 抓取上市股票 (TWSE) -> 對應 .TW
     try:
-        url = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
-        res = requests.get(url, timeout=10)
+        url_twse = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
+        res = requests.get(url_twse, headers=headers, timeout=12)
         if res.status_code == 200:
             for row in res.json():
                 c = str(row.get('公司代號', '')).strip()
                 if len(c) == 4 and c.isdigit():
-                    symbols.add(c)
-    except Exception:
-        pass
+                    target_list.append((c, f"{c}.TW"))
+    except Exception as e:
+        print(f"TWSE API 連線異常: {e}")
 
-    # 管道 2：備援證交所 ISIN 清單
-    if len(symbols) < 500:
-        for mode in [2, 4]:
-            try:
-                r = requests.get(f"https://isin.twse.com.tw/isin/C_public.jsp?strMode={mode}", timeout=10)
-                r.encoding = "big5"
-                m = re.findall(r'([1-9]\d{3})\u3000', r.text)
-                for code in m:
-                    symbols.add(code)
-            except Exception:
-                pass
+    # 2. 抓取上櫃股票 (TPEx) -> 對應 .TWO
+    try:
+        url_tpex = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
+        res = requests.get(url_tpex, headers=headers, timeout=12)
+        if res.status_code == 200:
+            for row in res.json():
+                c = str(row.get('SecuritiesCompanyCode', row.get('公司代號', ''))).strip()
+                if len(c) == 4 and c.isdigit():
+                    target_list.append((c, f"{c}.TWO"))
+    except Exception as e:
+        print(f"TPEx API 連線異常: {e}")
 
-    return sorted(list(symbols))
+    # 去重
+    unique_map = {}
+    for s, t in target_list:
+        if s not in unique_map:
+            unique_map[s] = t
+
+    return [(k, v) for k, v in unique_map.items()]
 
 def main():
-    raw_symbols = get_complete_tw_symbols()
-    print(f"共取得 {len(raw_symbols)} 檔台股代號，開始進行全市場矩陣運算...")
+    ticker_pairs = get_tw_market_tickers()
+    print(f"成功取得台股全市場 {len(ticker_pairs)} 檔有效標的（含上市與上櫃），開始批次下載...")
 
-    target_tickers = []
-    ticker_to_sym = {}
-    for s in raw_symbols:
-        tw = f"{s}.TW"
-        two = f"{s}.TWO"
-        target_tickers.extend([tw, two])
-        ticker_to_sym[tw] = s
-        ticker_to_sym[two] = s
+    if len(ticker_pairs) < 500:
+        print("❌ 取得代號數量不足，取消覆蓋檔案。")
+        sys.exit(1)
 
-    market_data = {}
-    chunk_size = 100
+    all_tickers = [t for s, t in ticker_pairs]
+    ticker_to_sym = {t: s for s, t in ticker_pairs}
 
-    for i in range(0, len(target_tickers), chunk_size):
-        chunk = target_tickers[i:i + chunk_size]
+    # 每批 60 檔，發送精準代號，避免 Yahoo 丟失資料
+    chunk_size = 60
+    market_data = []
+
+    for i in range(0, len(all_tickers), chunk_size):
+        chunk = all_tickers[i:i + chunk_size]
         try:
             df = yf.download(
                 tickers=chunk,
@@ -62,17 +67,14 @@ def main():
                 auto_adjust=False,
                 progress=False,
                 threads=True,
-                timeout=15
+                timeout=20
             )
 
             if df is not None and not df.empty and 'Close' in df:
                 closes_df = df['Close']
+
                 for ticker in chunk:
                     try:
-                        sym = ticker_to_sym[ticker]
-                        if sym in market_data:
-                            continue
-
                         if isinstance(closes_df, pd.DataFrame):
                             if ticker in closes_df.columns:
                                 series = closes_df[ticker].dropna()
@@ -96,7 +98,8 @@ def main():
                         r_1q = ((p_now - p_1q) / p_1q) * 100
 
                         score = round((r_5d * 0.2) + (r_1m * 0.5) + (r_1q * 0.3), 2)
-                        market_data[sym] = score
+                        sym = ticker_to_sym[ticker]
+                        market_data.append({"symbol": sym, "score": score})
                     except Exception:
                         continue
         except Exception:
@@ -104,23 +107,21 @@ def main():
 
         time.sleep(0.4)
 
-    results = [{"symbol": k, "score": v} for k, v in market_data.items()]
-
-    if len(results) < 50:
-        print(f"❌ 警告：僅收錄 {len(results)} 檔，取消覆蓋檔案。")
-        sys.exit(1)
-
     # 排序並計算全市場 PR 百分位 (1 ~ 99)
-    results.sort(key=lambda x: x['score'], reverse=True)
-    total_count = len(results)
+    market_data.sort(key=lambda x: x['score'], reverse=True)
+    total_count = len(market_data)
     print(f"成功收錄 {total_count} 檔有效股票，開始計算全市場 PR 百分位...")
 
-    for idx, item in enumerate(results):
+    if total_count < 1000:
+        print(f"❌ 警告：成功計算筆數 ({total_count}) 低於 1000，取消覆蓋檔案。")
+        sys.exit(1)
+
+    for idx, item in enumerate(market_data):
         pr = max(1, min(99, int(((total_count - idx) / total_count) * 100)))
         item['rs_rating'] = pr
 
     with open("market_rankings.json", "w", encoding="utf-8") as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
+        json.dump(market_data, f, ensure_ascii=False, indent=2)
 
     print(f"✅ 全市場排名大功告成！共計收錄 {total_count} 檔股票。")
 
