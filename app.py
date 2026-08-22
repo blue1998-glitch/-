@@ -5,7 +5,7 @@ from datetime import datetime, date
 import json
 import os
 
-st.set_page_config(page_title="順勢大師台股動能風控系統", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="順勢大師台股動能風控儀表板", layout="wide", initial_sidebar_state="collapsed")
 
 DATA_FILE = "portfolio.json"
 
@@ -22,7 +22,20 @@ def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-def fetch_stock_and_momentum(symbol, market, entry_date_str, w_5d, w_1m, w_1q):
+# 【核心功能】從 GitHub 自動排程生成的檔案中讀取 RS 排名
+def get_rs_from_json(symbol):
+    if os.path.exists("market_rankings.json"):
+        try:
+            with open("market_rankings.json", "r") as f:
+                data = json.load(f)
+                for item in data:
+                    if str(item['symbol']) == str(symbol):
+                        return item['rs_rating']
+        except:
+            return 50
+    return 50
+
+def fetch_stock_and_momentum(symbol, market, entry_date_str):
     ticker = f"{symbol}.TWO" if market.upper() == "TWO" else f"{symbol}.TW"
     try:
         stock = yf.Ticker(ticker)
@@ -30,58 +43,22 @@ def fetch_stock_and_momentum(symbol, market, entry_date_str, w_5d, w_1m, w_1q):
         if df.empty:
             df = stock.history(period="1mo")
         if df.empty:
-            return None, None, None, 0.0, 0.0, 0.0, 50, 0.0
+            return None, None, None, 0.0, 0.0, 0.0
         
         current_price = round(float(df['Close'].iloc[-1]), 2)
         max_high = round(float(df['High'].max()), 2)
         
-        # 抓取近 6 個月資料計算 20MA 與各期累積報酬率
         df_all = stock.history(period="6mo")
-        if len(df_all) >= 20:
-            ma20 = round(float(df_all['Close'].tail(20).mean()), 2)
-        else:
-            ma20 = current_price
+        ma20 = round(float(df_all['Close'].tail(20).mean()), 2) if len(df_all) >= 20 else current_price
 
-        # 多週期累積報酬率計算 (5日、20日/1月、60日/1季)
         closes = df_all['Close']
         r_5d = round(((closes.iloc[-1] - closes.iloc[-6]) / closes.iloc[-6]) * 100, 2) if len(closes) >= 6 else 0.0
         r_1m = round(((closes.iloc[-1] - closes.iloc[-21]) / closes.iloc[-21]) * 100, 2) if len(closes) >= 21 else r_5d
         r_1q = round(((closes.iloc[-1] - closes.iloc[-61]) / closes.iloc[-61]) * 100, 2) if len(closes) >= 61 else r_1m
 
-        # 極致動能綜合加權值
-        weighted_momentum = (r_5d * (w_5d / 100)) + (r_1m * (w_1m / 100)) + (r_1q * (w_1q / 100))
-
-        # 映射至全市場百分位 RS Rating (1~99分模型)
-        if weighted_momentum >= 45.0:
-            rs_rating = 99
-        elif weighted_momentum >= 30.0:
-            rs_rating = int(90 + (weighted_momentum - 30) / 15 * 8)
-        elif weighted_momentum >= 15.0:
-            rs_rating = int(80 + (weighted_momentum - 15) / 15 * 9)
-        elif weighted_momentum >= 5.0:
-            rs_rating = int(65 + (weighted_momentum - 5) / 10 * 14)
-        elif weighted_momentum >= 0.0:
-            rs_rating = int(50 + (weighted_momentum) / 5 * 14)
-        elif weighted_momentum >= -10.0:
-            rs_rating = int(30 + (weighted_momentum + 10) / 10 * 19)
-        else:
-            rs_rating = max(1, int(30 + weighted_momentum))
-        
-        # 大盤加權指數同期表現
-        taiex_roi = 0.0
-        try:
-            twii = yf.Ticker("^TWII")
-            mdf = twii.history(start=entry_date_str)
-            if len(mdf) >= 2:
-                m_start = mdf['Close'].iloc[0]
-                m_end = mdf['Close'].iloc[-1]
-                taiex_roi = round(((m_end - m_start) / m_start) * 100, 2)
-        except:
-            taiex_roi = 0.0
-
-        return current_price, max_high, ma20, r_5d, r_1m, r_1q, rs_rating, taiex_roi
-    except Exception as e:
-        return None, None, None, 0.0, 0.0, 0.0, 50, 0.0
+        return current_price, max_high, ma20, r_5d, r_1m, r_1q
+    except:
+        return None, None, None, 0.0, 0.0, 0.0
 
 def calc_pnl(shares, avg_cost, current_price, fee_discount):
     buy_fee_rate = 0.001425 * fee_discount
@@ -100,25 +77,19 @@ def calc_pnl(shares, avg_cost, current_price, fee_discount):
 st.title("📈 順勢大師台股動能風控儀表板")
 
 # 1. 頂部大師參數自訂區
-with st.expander("⚙️ 順勢大師風控與極致動能權重設定（點此自訂）", expanded=False):
+with st.expander("⚙️ 順勢大師風控與動能參數設定（點此自訂）", expanded=False):
     c1, c2, c3 = st.columns(3)
     with c1:
-        st.write("##### 🚀 極致動能權重配置 (合為 100%)")
-        w_5d = st.slider("5 日動能權重 (%)", 0, 50, 20, 5)
-        w_1m = st.slider("1 個月動能權重 (%)", 20, 80, 50, 5)
-        w_1q = st.slider("1 季動能權重 (%)", 0, 50, 30, 5)
-        total_w = w_5d + w_1m + w_1q
-        if total_w != 100:
-            st.warning(f"目前權重總和為 {total_w}%，建議調整至 100%")
-    with c2:
         st.write("##### 🛡️ 停損與保本防禦")
         stop_loss_pct = st.slider("🔴 初始停損趴數 (%)", 1.0, 15.0, 7.0, 0.5, format="-%0.1f%%")
         breakeven_trigger_pct = st.slider("🛡️ 保本停損啟動門檻（獲利達此%鎖保本）", 3.0, 20.0, 8.0, 0.5, format="+%0.1f%%")
         pyramid_safety_margin = st.slider("⚖️ 加碼安全邊際底線（新均價距現價%）", 1.0, 10.0, 4.0, 0.5, format="%0.1f%%")
-    with c3:
-        st.write("##### ⏳ 停利、時間與手續費")
+    with c2:
+        st.write("##### 🚀 獲利奔馳與回檔")
         pullback_target_pct = st.slider("🟣 高點回檔停利趴數 (%)", 3.0, 25.0, 10.0, 0.5, format="-%0.1f%%")
         bias_threshold = st.slider("🟠 月線正乖離過熱閥值 (%)", 15.0, 60.0, 30.0, 1.0, format="+%0.0f%%")
+    with c3:
+        st.write("##### ⏳ 時間與手續費")
         time_stop_days = st.slider("⏳ 時間停損天數（天）", 5, 30, 10, 1)
         discount_display = st.slider("💰 券商手續費折數（例 0.6 = 6折）", 0.1, 1.0, 0.6, 0.01, format="%0.2f")
 
@@ -171,9 +142,9 @@ else:
         shares = item['shares']
         stored_high = item.get('record_high', avg_cost)
 
-        cur_price, max_high, ma20, r_5d, r_1m, r_1q, rs_score, taiex_roi = fetch_stock_and_momentum(
-            sym, mkt, entry_d, w_5d, w_1m, w_1q
-        )
+        # 讀取全市場排名 RS 與各期動能
+        rs_score = get_rs_from_json(sym)
+        cur_price, max_high, ma20, r_5d, r_1m, r_1q = fetch_stock_and_momentum(sym, mkt, entry_d)
         if cur_price is None:
             cur_price, max_high, ma20 = avg_cost, stored_high, avg_cost
 
@@ -239,7 +210,7 @@ else:
             m_col1.metric("近 5 日累積動能", f"{r_5d:+}%", "極短期爆發")
             m_col2.metric("近 1 個月累積動能", f"{r_1m:+}%", "主升段核心")
             m_col3.metric("近 1 季累積動能", f"{r_1q:+}%", "中期多頭趨勢")
-            m_col4.metric("極致 RS Rating", f"{rs_score} 分", "全市場評級")
+            m_col4.metric("全市場 RS Rating", f"{rs_score} 分", "GitHub 每日排定")
 
             # 第二排：損益與風控防禦
             c1, c2, c3, c4 = st.columns(4)
