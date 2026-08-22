@@ -1,7 +1,7 @@
 name: Daily Ranking
 on:
   schedule:
-    - cron: '30 6 * * 1-5' # 台灣時間週一至週五 14:30 自動執行 (UTC 06:30)
+    - cron: '30 6 * * 1-5' # 台灣時間週一至週五 14:30 自動執行
   workflow_dispatch: # 允許隨時手動點擊執行
 
 jobs:
@@ -24,4 +24,5 @@ jobs:
           git config user.email github-actions@github.com
           git add market_rankings.json
           git commit -m "Update full market rankings [skip ci]" || exit 0
-          git push
+          git pull --rebase origin main
+          git push origin main
