@@ -233,6 +233,7 @@ else:
     st.warning("🟡 正在等待全市場 RS 排名資料載入...")
 
 tab_portfolio, tab_leaderboard = st.tabs(["📈 個人持倉風控監控", "🏆 全市場 RS 排行榜 & 萬用個股查詢"])
+
 # ==========================================
 # 分頁 1：個人持倉風控監控儀表板
 # ==========================================
@@ -320,7 +321,7 @@ with tab_portfolio:
             if cur_price is None:
                 cur_price, max_high, ma20 = avg_cost, stored_high, avg_cost
 
-            actual_high = max(stored_high, avg_cost, max_high)
+            actual_high = max(stored_high, avg_cost, max_high if max_high is not None else stored_high)
             if actual_high != stored_high:
                 portfolio[idx]["record_high"] = actual_high
                 save_data(portfolio)
@@ -372,13 +373,14 @@ with tab_portfolio:
                 m_col3.metric("近 1 季累積動能", f"{r_1q:+}%")
                 m_col4.metric("全市場 RS Rating", f"{rs_score} 分")
 
-                c1, c2, c3, c4, c5 = st.columns(5)
+                c1, c2, c3, c4, c5, c6 = st.columns(6)
                 c1.metric("剩餘持股 / 均價", f"{shares:,} 股", f"均價: ${avg_cost}")
-                c2.metric("最新市價", f"${cur_price}", f"高點回檔: -{pullback_pct}%")
-                c3.metric("未實現損益", f"{net_pnl:+,} 元", f"{roi:+}%")
-                c4.metric("累積已實現損益", f"{realized_pnl:+,} 元")
+                c2.metric("最新市價", f"${cur_price}")
+                c3.metric("建倉後最高價", f"${actual_high}", f"回檔: -{pullback_pct}%")
+                c4.metric("未實現損益", f"{net_pnl:+,} 元", f"{roi:+}%")
+                c5.metric("累積已實現損益", f"{realized_pnl:+,} 元")
                 stop_label = "🛡️ 保本停損線" if is_breakeven_active else f"🔴 初始停損 (-{stop_loss_pct}%)"
-                c5.metric(stop_label, f"${effective_stop_price}", f"回檔價: ${pullback_price}")
+                c6.metric(stop_label, f"${effective_stop_price}", f"回檔價: ${pullback_price}")
 
                 st.markdown(f"**風控狀態：** :{status_color}[{status_text}]")
 
