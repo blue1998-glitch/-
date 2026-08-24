@@ -129,7 +129,6 @@ if len(market_rankings) > 0:
 else:
     st.warning("🟡 正在等待全市場 RS 排名資料載入...")
 
-# 分頁宣告：已將個人持倉移至最前面
 tab_portfolio, tab_leaderboard = st.tabs(["📈 個人持倉風控監控", "🏆 全市場 RS 排行榜 & 萬用個股查詢"])
 
 # ==========================================
@@ -140,17 +139,17 @@ with tab_portfolio:
         c1, c2, c3 = st.columns(3)
         with c1:
             st.write("##### 🛡️ 停損與保本防禦")
-            stop_loss_pct = st.slider("🔴 初始停損趴數 (%)", 1.0, 15.0, 7.0, 0.5, format="-%0.1f%%")
-            breakeven_trigger_pct = st.slider("🛡️ 保本停損啟動門檻", 3.0, 20.0, 8.0, 0.5, format="+%0.1f%%")
-            pyramid_safety_margin = st.slider("⚖️ 加碼安全邊際底線", 1.0, 10.0, 4.0, 0.5, format="%0.1f%%")
+            stop_loss_pct = st.number_input("🔴 初始停損趴數 (%)", min_value=1.0, max_value=50.0, value=7.0, step=0.5, format="%.1f")
+            breakeven_trigger_pct = st.number_input("🛡️ 保本停損啟動門檻 (%)", min_value=1.0, max_value=50.0, value=8.0, step=0.5, format="%.1f")
+            pyramid_safety_margin = st.number_input("⚖️ 加碼安全邊際底線 (%)", min_value=0.5, max_value=50.0, value=4.0, step=0.5, format="%.1f")
         with c2:
             st.write("##### 🚀 獲利奔馳與回檔")
-            pullback_target_pct = st.slider("🟣 高點回檔停利趴數 (%)", 3.0, 25.0, 10.0, 0.5, format="-%0.1f%%")
-            bias_threshold = st.slider("🟠 月線正乖離過熱閥值 (%)", 15.0, 60.0, 30.0, 1.0, format="+%0.0f%%")
+            pullback_target_pct = st.number_input("🟣 高點回檔停利趴數 (%)", min_value=1.0, max_value=50.0, value=10.0, step=0.5, format="%.1f")
+            bias_threshold = st.number_input("🟠 月線正乖離過熱閥值 (%)", min_value=5.0, max_value=100.0, value=30.0, step=1.0, format="%.0f")
         with c3:
             st.write("##### ⏳ 時間與手續費")
-            time_stop_days = st.slider("⏳ 時間停損天數（天）", 5, 30, 10, 1)
-            discount_display = st.slider("💰 券商手續費折數", 0.1, 1.0, 0.6, 0.01, format="%0.2f")
+            time_stop_days = st.number_input("⏳ 時間停損天數（天）", min_value=1, max_value=100, value=10, step=1)
+            discount_display = st.number_input("💰 券商手續費折數", min_value=0.01, max_value=1.0, value=0.60, step=0.05, format="%.2f")
 
     portfolio = load_data()
 
@@ -424,7 +423,7 @@ with tab_leaderboard:
 
         filter_col1, filter_col2 = st.columns([1, 3])
         with filter_col1:
-            min_rs = st.slider("最低 RS 門檻篩選", 70, 95, 75, 1)
+            min_rs = st.number_input("最低 RS 門檻篩選", min_value=1, max_value=99, value=75, step=1)
         with filter_col2:
             market_filter = st.multiselect("市場別篩選", ["上市", "上櫃"], default=["上市", "上櫃"])
 
@@ -455,3 +454,4 @@ with tab_leaderboard:
         )
     else:
         st.info("尚無排名資料，請先執行 Actions 排程產生資料。")
+  
