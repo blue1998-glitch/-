@@ -25,7 +25,6 @@ def save_data(data):
 
 @st.cache_data(ttl=60)
 def load_market_data():
-    # 1. 優先從伺服器本機讀取
     if os.path.exists("market_rankings.json"):
         try:
             with open("market_rankings.json", "r", encoding="utf-8") as f:
@@ -35,7 +34,6 @@ def load_market_data():
         except Exception:
             pass
 
-    # 2. 自動連線 GitHub Raw
     try:
         url = "https://raw.githubusercontent.com/blue1998-glitch/-/main/market_rankings.json"
         res = requests.get(url, timeout=8)
@@ -101,7 +99,6 @@ if len(market_rankings) > 0:
 else:
     st.warning("🟡 正在等待全市場 RS 排名資料載入...")
 
-# 建立兩大功能分頁
 tab_leaderboard, tab_portfolio = st.tabs(["🏆 全市場 RS 排行榜 & 萬用個股查詢", "📈 個人持倉風控監控"])
 
 # ==========================================
@@ -149,7 +146,6 @@ with tab_leaderboard:
 
     st.subheader("🏆 全市場 RS ≥ 75 領袖股強勢排行榜")
     
-    # 篩選 RS >= 75
     df_raw = pd.DataFrame(market_rankings)
     if not df_raw.empty:
         if 'name' not in df_raw.columns:
@@ -213,6 +209,7 @@ with tab_portfolio:
 
     portfolio = load_data()
 
+    # --- 位置 1：新增持股（含 history 初始化） ---
     with st.expander("➕ 新增持股 / 建倉", expanded=False):
         with st.form("add_stock_form"):
             col1, col2, col3 = st.columns(3)
@@ -237,7 +234,18 @@ with tab_portfolio:
                     "avg_cost": price,
                     "shares": int(shs),
                     "record_high": price,
-                    "realized_pnl": 0
+                    "realized_pnl": 0,
+                    "history": [
+                        {
+                            "時間": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                            "動作": "🌱 初始建倉",
+                            "成交價": price,
+                            "異動股數": f"+{int(shs)}",
+                            "剩餘股數": int(shs),
+                            "單筆實現損益": "0 元",
+                            "備註": f"起始成本 ${price}"
+                        }
+                    ]
                 }
                 portfolio.append(new_item)
                 save_data(portfolio)
@@ -260,6 +268,7 @@ with tab_portfolio:
             shares = item['shares']
             stored_high = item.get('record_high', avg_cost)
             realized_pnl = item.get('realized_pnl', 0)
+            history_logs = item.get('history', [])
 
             info = get_stock_rs_info(sym, market_rankings)
             rs_score = info.get('rs_rating', 50) if info else 50
@@ -317,9 +326,10 @@ with tab_portfolio:
                 status_text = f"⏳ 觸發時間停損（持股已 {days_held} 天，動能停滯）！建議換股"
                 status_color = "orange"
 
+            # --- 位置 2：持倉卡片（顯眼呈現剩餘股數與損益指標） ---
             with st.container():
                 st.markdown("---")
-                st.subheader(f"{name} ({sym}.{mkt}) ｜ 持有 {days_held} 天 ｜ {rs_badge}")
+                st.subheader(f"{name} ({sym}.{mkt}) ｜ 📦 剩餘持股: {shares:,} 股 ｜ 持有 {days_held} 天 ｜ {rs_badge}")
                 
                 m_col1, m_col2, m_col3, m_col4 = st.columns(4)
                 m_col1.metric("近 5 日累積動能", f"{r_5d:+}%")
@@ -328,16 +338,17 @@ with tab_portfolio:
                 m_col4.metric("全市場 RS Rating", f"{rs_score} 分")
 
                 c1, c2, c3, c4, c5 = st.columns(5)
-                c1.metric("最新市價 / 均價", f"${cur_price}", f"均價: ${avg_cost}")
-                c2.metric("未實現淨損益", f"{net_pnl:+,} 元", f"{roi:+}%")
-                c3.metric("累積已實現損益", f"{realized_pnl:+,} 元")
+                c1.metric("剩餘持股 / 均價", f"{shares:,} 股", f"均價: ${avg_cost}")
+                c2.metric("最新市價", f"${cur_price}", f"高點回檔: -{pullback_pct}%")
+                c3.metric("未實現損益", f"{net_pnl:+,} 元", f"{roi:+}%")
+                c4.metric("累積已實現損益", f"{realized_pnl:+,} 元")
                 stop_label = "🛡️ 保本停損線" if is_breakeven_active else f"🔴 初始停損 (-{stop_loss_pct}%)"
-                c4.metric(stop_label, f"${effective_stop_price}")
-                c5.metric("波段最高 / 回檔線", f"${actual_high}", f"回檔價: ${pullback_price}")
+                c5.metric(stop_label, f"${effective_stop_price}", f"回檔價: ${pullback_price}")
 
                 st.markdown(f"**風控狀態：** :{status_color}[{status_text}]")
 
-                with st.expander(f"⚙️ 操作 {name}（順勢加碼試算 / 減碼 / 結清）"):
+                # --- 位置 3：操作區塊（記錄加減碼歷程流水帳） ---
+                with st.expander(f"⚙️ 操作 {name}（順勢加碼 / 分批減碼 / 結清）"):
                     op_col1, op_col2, op_col3 = st.columns(3)
                     with op_col1:
                         st.write("##### 🔼 順勢金字塔加碼")
@@ -347,7 +358,20 @@ with tab_portfolio:
                         sim_avg = round(((shares * avg_cost) + (int(add_s) * add_p)) / new_tot, 2)
                         buf = round(((cur_price - sim_avg) / cur_price) * 100, 1)
                         st.caption(f"試算新均價：**${sim_avg}** ｜ 安全緩衝：**{buf:+}%**")
+                        
                         if st.button("確認加碼", key=f"btn_add_{idx}"):
+                            new_log = {
+                                "時間": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                "動作": "🔼 順勢加碼",
+                                "成交價": add_p,
+                                "異動股數": f"+{int(add_s)}",
+                                "剩餘股數": new_tot,
+                                "單筆實現損益": "-",
+                                "備註": f"新均價 ${sim_avg} (緩衝 {buf:+}%)"
+                            }
+                            if 'history' not in portfolio[idx]:
+                                portfolio[idx]['history'] = []
+                            portfolio[idx]['history'].append(new_log)
                             portfolio[idx]['shares'] = new_tot
                             portfolio[idx]['avg_cost'] = sim_avg
                             save_data(portfolio)
@@ -365,6 +389,19 @@ with tab_portfolio:
                             new_shares = shares - int(red_s)
                             current_realized = item.get('realized_pnl', 0)
                             
+                            new_log = {
+                                "時間": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                "動作": "🔽 分批減碼",
+                                "成交價": red_p,
+                                "異動股數": f"-{int(red_s)}",
+                                "剩餘股數": new_shares,
+                                "單筆實現損益": f"{sim_red_pnl:+,} 元",
+                                "備註": f"報酬率 {sim_red_roi:+}%"
+                            }
+                            if 'history' not in portfolio[idx]:
+                                portfolio[idx]['history'] = []
+                            portfolio[idx]['history'].append(new_log)
+
                             if new_shares > 0:
                                 portfolio[idx]['shares'] = new_shares
                                 portfolio[idx]['realized_pnl'] = current_realized + sim_red_pnl
@@ -380,3 +417,9 @@ with tab_portfolio:
                             portfolio.pop(idx)
                             save_data(portfolio)
                             st.rerun()
+
+                # --- 位置 4：呈現加減碼損益痕跡流水帳 ---
+                if history_logs:
+                    with st.expander(f"📜 {name} 加減碼歷程與損益痕跡 (目前剩餘: {shares:,} 股)", expanded=False):
+                        df_history = pd.DataFrame(history_logs)
+                        st.dataframe(df_history, use_container_width=True, hide_index=True)
