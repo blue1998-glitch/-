@@ -62,7 +62,7 @@ def load_market_data():
 def get_stock_rs_info(symbol, market_list):
     sym_clean = str(symbol).strip().upper()
     for item in market_list:
-        if str(item.get('symbol', '')).strip().upper() == sym_clean:
+        if str(item.get("symbol", "")).strip().upper() == sym_clean:
             return item
     return None
 
@@ -76,13 +76,13 @@ def fetch_stock_and_momentum(symbol, market, entry_date_str):
         if df.empty:
             return None, None, None, 0.0, 0.0, 0.0
         
-        current_price = round(float(df['Close'].iloc[-1]), 2)
-        max_high = round(float(df['High'].max()), 2)
+        current_price = round(float(df["Close"].iloc[-1]), 2)
+        max_high = round(float(df["High"].max()), 2)
         
         df_all = stock.history(period="6mo")
-        ma20 = round(float(df_all['Close'].tail(20).mean()), 2) if len(df_all) >= 20 else current_price
+        ma20 = round(float(df_all["Close"].tail(20).mean()), 2) if len(df_all) >= 20 else current_price
 
-        closes = df_all['Close']
+        closes = df_all["Close"]
         r_5d = round(((closes.iloc[-1] - closes.iloc[-6]) / closes.iloc[-6]) * 100, 2) if len(closes) >= 6 else 0.0
         r_1m = round(((closes.iloc[-1] - closes.iloc[-21]) / closes.iloc[-21]) * 100, 2) if len(closes) >= 21 else r_5d
         r_1q = round(((closes.iloc[-1] - closes.iloc[-61]) / closes.iloc[-61]) * 100, 2) if len(closes) >= 61 else r_1m
@@ -144,17 +144,17 @@ with tab_leaderboard:
         query_str = search_query.strip().upper()
         matched = [
             item for item in market_rankings 
-            if query_str in str(item.get('symbol', '')).upper() or query_str in str(item.get('name', ''))
+            if query_str in str(item.get("symbol", "")).upper() or query_str in str(item.get("name", ""))
         ]
         
         if matched:
             st.write(f"找到 **{len(matched)}** 筆符合標的：")
             for m in matched:
-                score = m.get('rs_rating', 50)
-                m_type = m.get('market', '上市/上櫃')
-                name = m.get('name', m.get('symbol'))
-                sym = m.get('symbol')
-                raw_score = m.get('score', 0.0)
+                score = m.get("rs_rating", 50)
+                m_type = m.get("market", "上市/上櫃")
+                name = m.get("name", m.get("symbol"))
+                sym = m.get("symbol")
+                raw_score = m.get("score", 0.0)
                 
                 if score >= 85:
                     badge_style = "🚀 極致動能領袖股 (前 15%)"
@@ -178,10 +178,10 @@ with tab_leaderboard:
     
     df_raw = pd.DataFrame(market_rankings)
     if not df_raw.empty:
-        if 'name' not in df_raw.columns:
-            df_raw['name'] = df_raw['symbol']
-        if 'market' not in df_raw.columns:
-            df_raw['market'] = "台股"
+        if "name" not in df_raw.columns:
+            df_raw["name"] = df_raw["symbol"]
+        if "market" not in df_raw.columns:
+            df_raw["market"] = "台股"
 
         filter_col1, filter_col2 = st.columns([1, 3])
         with filter_col1:
@@ -190,21 +190,21 @@ with tab_leaderboard:
             market_filter = st.multiselect("市場別篩選", ["上市", "上櫃"], default=["上市", "上櫃"])
 
         filtered_df = df_raw[
-            (df_raw['rs_rating'] >= min_rs) & 
-            (df_raw['market'].isin(market_filter))
+            (df_raw["rs_rating"] >= min_rs) & 
+            (df_raw["market"].isin(market_filter))
         ].copy()
 
         filtered_df = filtered_df.sort_values(by="rs_rating", ascending=False)
-        filtered_df['動能梯隊'] = filtered_df['rs_rating'].apply(
+        filtered_df["動能梯隊"] = filtered_df["rs_rating"].apply(
             lambda x: "🚀 第一梯隊 (RS 90+)" if x >= 90 else ("⚡ 第二梯隊 (RS 80-89)" if x >= 80 else "🔥 第三梯隊 (RS 75-79)")
         )
 
-        display_df = filtered_df[['rs_rating', 'symbol', 'name', 'market', 'score', '動能梯隊']].rename(columns={
-            'rs_rating': 'RS 評分 (PR)',
-            'symbol': '股票代碼',
-            'name': '中文名稱',
-            'market': '上市櫃',
-            'score': '綜合動能得分'
+        display_df = filtered_df[["rs_rating", "symbol", "name", "market", "score", "動能梯隊"]].rename(columns={
+            "rs_rating": "RS 評分 (PR)",
+            "symbol": "股票代碼",
+            "name": "中文名稱",
+            "market": "上市櫃",
+            "score": "綜合動能得分"
         })
 
         st.caption(f"共計 **{len(display_df)}** 檔標的符合條件（RS ≥ {min_rs}）：")
@@ -294,18 +294,18 @@ with tab_portfolio:
             st.success(f"🕒 **台灣時間（最新市價更新成功）：{st.session_state.last_portfolio_refresh}**")
 
         for idx, item in enumerate(portfolio):
-            sym = item['symbol']
-            name = item['name']
-            mkt = item['market']
-            entry_d = item['entry_date']
-            avg_cost = item['avg_cost']
-            shares = item['shares']
-            stored_high = item.get('record_high', avg_cost)
-            realized_pnl = item.get('realized_pnl', 0)
-            history_logs = item.get('history', [])
+            sym = item["symbol"]
+            name = item["name"]
+            mkt = item["market"]
+            entry_d = item["entry_date"]
+            avg_cost = item["avg_cost"]
+            shares = item["shares"]
+            stored_high = item.get("record_high", avg_cost)
+            realized_pnl = item.get("realized_pnl", 0)
+            history_logs = item.get("history", [])
 
             info = get_stock_rs_info(sym, market_rankings)
-            rs_score = info.get('rs_rating', 50) if info else 50
+            rs_score = info.get("rs_rating", 50) if info else 50
             
             cur_price, max_high, ma20, r_5d, r_1m, r_1q = fetch_stock_and_momentum(sym, mkt, entry_d)
             if cur_price is None:
@@ -313,7 +313,7 @@ with tab_portfolio:
 
             actual_high = max(stored_high, avg_cost, max_high)
             if actual_high != stored_high:
-                portfolio[idx]['record_high'] = actual_high
+                portfolio[idx]["record_high"] = actual_high
                 save_data(portfolio)
 
             net_pnl, roi, breakeven_p = calc_pnl(shares, avg_cost, cur_price, discount_display)
@@ -401,11 +401,11 @@ with tab_portfolio:
                                 "單筆實現損益": "-",
                                 "備註": f"新均價 ${sim_avg} (緩衝 {buf:+}%)"
                             }
-                            if 'history' not in portfolio[idx]:
-                                portfolio[idx]['history'] = []
-                            portfolio[idx]['history'].append(new_log)
-                            portfolio[idx]['shares'] = new_tot
-                            portfolio[idx]['avg_cost'] = sim_avg
+                            if "history" not in portfolio[idx]:
+                                portfolio[idx]["history"] = []
+                            portfolio[idx]["history"].append(new_log)
+                            portfolio[idx]["shares"] = new_tot
+                            portfolio[idx]["avg_cost"] = sim_avg
                             save_data(portfolio)
                             st.rerun()
 
@@ -419,7 +419,7 @@ with tab_portfolio:
                         
                         if st.button("確認減碼", key=f"btn_red_{idx}"):
                             new_shares = shares - int(red_s)
-                            current_realized = item.get('realized_pnl', 0)
+                            current_realized = item.get("realized_pnl", 0)
                             
                             new_log = {
                                 "時間": get_tw_now_str("%Y-%m-%d %H:%M"),
@@ -430,13 +430,13 @@ with tab_portfolio:
                                 "單筆實現損益": f"{sim_red_pnl:+,} 元",
                                 "備註": f"報酬率 {sim_red_roi:+}%"
                             }
-                            if 'history' not in portfolio[idx]:
-                                portfolio[idx]['history'] = []
-                            portfolio[idx]['history'].append(new_log)
+                            if "history" not in portfolio[idx]:
+                                portfolio[idx]["history"] = []
+                            portfolio[idx]["history"].append(new_log)
 
                             if new_shares > 0:
-                                portfolio[idx]['shares'] = new_shares
-                                portfolio[idx]['realized_pnl'] = current_realized + sim_red_pnl
+                                portfolio[idx]["shares"] = new_shares
+                                portfolio[idx]["realized_pnl"] = current_realized + sim_red_pnl
                                 save_data(portfolio)
                             else:
                                 portfolio.pop(idx)
@@ -450,6 +450,6 @@ with tab_portfolio:
                             save_data(portfolio)
                             st.rerun()
 
-                if history_logs:
+                if len(history_logs) > 0:
                     with st.expander(f"📜 {name} 交易歷程 (剩餘 {shares:,} 股)", expanded=False):
-                        df_history = 
+                        df_h
