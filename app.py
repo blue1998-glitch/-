@@ -450,6 +450,7 @@ with tab_portfolio:
                             save_data(portfolio)
                             st.rerun()
 
-                if len(history_logs) > 0:
+                                if len(history_logs) > 0:
                     with st.expander(f"📜 {name} 交易歷程 (剩餘 {shares:,} 股)", expanded=False):
-                        df_h
+                        df_h = pd.DataFrame(history_logs)
+                        st.dataframe(df_h, use_container_width=True, hide_index=True)
