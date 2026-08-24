@@ -384,18 +384,18 @@ with tab_portfolio:
                 st.markdown(f"### {name} `({sym}.{mkt})`")
                 st.caption(f"📦 持有: **{shares:,} 股** ｜ 持有 **{days_held} 天** ｜ {status_badge}")
                 
-                # 雙欄動能指標 (適合手機並排)
+                # 依序排列動能指標：RS分數、5日報酬、1月報酬、1季報酬
                 m1, m2 = st.columns(2)
-                m1.metric("5 日動能", f"{r_5d:+}%")
-                m2.metric("RS Rating", f"{rs_score} 分")
+                m1.metric("RS分數", f"{rs_score} 分")
+                m2.metric("5日報酬", f"{r_5d:+}%")
                 
                 m3, m4 = st.columns(2)
-                m3.metric("1 月動能", f"{r_1m:+}%")
-                m4.metric("1 季動能", f"{r_1q:+}%")
+                m3.metric("1月報酬", f"{r_1m:+}%")
+                m4.metric("1季報酬", f"{r_1q:+}%")
 
                 st.divider()
 
-                # 雙欄持倉與損益
+                # 持倉與損益指標卡
                 p1, p2 = st.columns(2)
                 p1.metric("最新市價", f"${cur_price}", f"成本: ${avg_cost}")
                 p2.metric("未實現損益", f"{net_pnl:+,} 元", f"{roi:+}%")
@@ -405,12 +405,13 @@ with tab_portfolio:
                 stop_label = "🛡️ 保本防線" if is_breakeven_active else f"🔴 初始停損 (-{stop_loss_pct}%)"
                 p4.metric(stop_label, f"${effective_stop_price}", f"回檔價: ${pullback_price}")
 
-                if realized_pnl != 0:
-                    st.caption(f"💵 累積已實現損益：**{realized_pnl:+,} 元**")
+                p5, p6 = st.columns(2)
+                p5.metric("累積已實現損益", f"{realized_pnl:+,} 元")
+                p6.metric("剩餘股數", f"{shares:,} 股", f"持有 {days_held} 天")
 
                 st.markdown(f"**風控訊號：** :{status_color}[{status_text}]")
 
-                # 操作選單改為頁籤形式，防止手機擠壓
+                # 操作選單
                 with st.expander(f"⚙️ 交易操作（加碼 / 減碼 / 結清）"):
                     tab_add, tab_red, tab_del = st.tabs(["🔼 加碼", "🔽 減碼", "🗑️ 結清"])
                     
@@ -494,7 +495,7 @@ with tab_leaderboard:
                     st.caption(badge_style)
                     
                     sq1, sq2 = st.columns(2)
-                    sq1.metric("RS Rating", f"{score} 分")
+                    sq1.metric("RS分數", f"{score} 分")
                     sq2.metric("綜合得分", f"{raw_score:+.2f}")
                     st.caption(f"📊 全市場地位：贏過全台 **{score}%** 股票")
         else:
