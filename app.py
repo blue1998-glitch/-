@@ -453,5 +453,5 @@ with tab_leaderboard:
             hide_index=True,
             height=500
         )
-    elselse:
+    else:
         st.info("尚無排名資料，請先執行 Actions 排程產生資料。")
