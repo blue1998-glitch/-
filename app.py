@@ -10,7 +10,6 @@ st.set_page_config(page_title="台股動能 RS 排行與風控儀表板", layout
 
 DATA_FILE = "portfolio.json"
 
-# 初始化 Session State 時間戳記
 if "last_portfolio_refresh" not in st.session_state:
     st.session_state.last_portfolio_refresh = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -19,7 +18,7 @@ def load_data():
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except:
+        except Exception:
             return []
     return []
 
@@ -29,7 +28,6 @@ def save_data(data):
 
 @st.cache_data(ttl=60)
 def load_market_data():
-    # 1. 優先從伺服器本機讀取
     if os.path.exists("market_rankings.json"):
         try:
             mtime = os.path.getmtime("market_rankings.json")
@@ -41,7 +39,6 @@ def load_market_data():
         except Exception:
             pass
 
-    # 2. 自動連線 GitHub Raw
     try:
         url = "https://raw.githubusercontent.com/blue1998-glitch/-/main/market_rankings.json"
         res = requests.get(url, timeout=8)
@@ -84,7 +81,7 @@ def fetch_stock_and_momentum(symbol, market, entry_date_str):
         r_1q = round(((closes.iloc[-1] - closes.iloc[-61]) / closes.iloc[-61]) * 100, 2) if len(closes) >= 61 else r_1m
 
         return current_price, max_high, ma20, r_5d, r_1m, r_1q
-    except:
+    except Exception:
         return None, None, None, 0.0, 0.0, 0.0
 
 def calc_pnl(shares, avg_cost, current_price, fee_discount):
@@ -98,31 +95,28 @@ def calc_pnl(shares, avg_cost, current_price, fee_discount):
     breakeven_price = round(avg_cost * (1 + buy_fee_rate + sell_fee_rate + tax_rate), 2)
     return net_pnl, roi, breakeven_price
 
-# --- 主程式介面 ---
 market_rankings, db_status = load_market_data()
 
 st.title("🚀 台股動能 RS 領袖排行與風控儀表板")
 
-# 頂部常駐：五大風控機制速查指南
 with st.expander("🛡️ 系統五大自動化量化風控機制速查指南（交易紀律鐵律）", expanded=True):
     fc1, fc2, fc3, fc4, fc5 = st.columns(5)
     with fc1:
         st.markdown("**1. 🔴 初始固定停損**")
-        st.caption("進場即設防線，跌破設定趴數（預設 -7%）無條件全數停損，截斷重大虧損。")
+        st.caption("跌破設定趴數（預設 -7%）無條件停損，截斷重大虧損。")
     with fc2:
         st.markdown("**2. 🛡️ 動態保本停損**")
-        st.caption("波段獲利達標（預設 +8%）自動啟動，將停損點上推至「零虧損保本價」，守住本金。")
+        st.caption("波段獲利達標（預設 +8%）自動啟動，停損點推至零虧損保本價。")
     with fc3:
         st.markdown("**3. 🟣 高點回檔停利**")
-        st.caption("獲利波段自歷史最高價回檔達設定幅度（預設 10%），觸發分批獲利減碼。")
+        st.caption("自歷史最高價回檔達設定幅度（預設 10%），觸發分批減碼。")
     with fc4:
         st.markdown("**4. 🟠 月線乖離過熱**")
-        st.caption("現價與 20MA 正乖離過大（預設 +30%），代表短線情緒過熱，建議減碼降槓桿。")
+        st.caption("現價與 20MA 正乖離過大（預設 +30%），短線過熱建議調節。")
     with fc5:
         st.markdown("**5. ⏳ 時間動能停損**")
-        st.caption("持有天數達標（預設 10 天）且損益卡在 ±2% 原地踏步，代表動能停滯，換股操作。")
+        st.caption("持有天數達標（預設 10 天）且損益在 ±2% 內停滯，建議換股。")
 
-# 全市場資料庫狀態欄
 if len(market_rankings) > 0:
     st.info(f"🟢 **全市場 RS 資料庫已就緒** ｜ 收錄 **{len(market_rankings)}** 檔台股 ｜ 狀態：{db_status}")
 else:
@@ -238,7 +232,6 @@ with tab_portfolio:
 
     portfolio = load_data()
 
-    # 新增持股建倉表單
     with st.expander("➕ 新增持股 / 建倉", expanded=False):
         with st.form("add_stock_form"):
             col1, col2, col3 = st.columns(3)
@@ -284,7 +277,6 @@ with tab_portfolio:
     if not portfolio:
         st.info("目前尚無持倉，請點擊上方「➕ 新增持股」建立第一檔股票。")
     else:
-        # 刷新按鈕與最後更新時間顯示列
         rf_col1, rf_col2 = st.columns([1, 4])
         with rf_col1:
             if st.button("🔄 刷新最新市價與動能評分", use_container_width=True):
@@ -292,7 +284,7 @@ with tab_portfolio:
                 st.session_state.last_portfolio_refresh = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 st.rerun()
         with rf_col2:
-            st.success(f"🕒 **最新市價與持倉數據更新成功時間：{st.session_state.last_portfolio_refresh}**")
+            st.success(f"🕒 **最新市價與持倉更新時間：{st.session_state.last_portfolio_refresh}**")
 
         for idx, item in enumerate(portfolio):
             sym = item['symbol']
@@ -323,7 +315,7 @@ with tab_portfolio:
             
             try:
                 days_held = (date.today() - datetime.strptime(entry_d, "%Y-%m-%d").date()).days
-            except:
+            except Exception:
                 days_held = 0
 
             if rs_score >= 85:
@@ -363,7 +355,7 @@ with tab_portfolio:
 
             with st.container():
                 st.markdown("---")
-                st.subheader(f"{name} ({sym}.{mkt}) ｜ 📦 剩餘持股: {shares:,} 股 ｜ 持有 {days_held} 天 ｜ {rs_badge}")
+                st.subheader(f"{name} ({sym}.{mkt}) ｜ 📦 剩餘: {shares:,} 股 ｜ 持有 {days_held} 天 ｜ {rs_badge}")
                 
                 m_col1, m_col2, m_col3, m_col4 = st.columns(4)
                 m_col1.metric("近 5 日累積動能", f"{r_5d:+}%")
@@ -381,7 +373,7 @@ with tab_portfolio:
 
                 st.markdown(f"**風控狀態：** :{status_color}[{status_text}]")
 
-                with st.expander(f"⚙️ 操作 {name}（順勢加碼 / 分批減碼 / 結清）"):
+                with st.expander(f"⚙️ 操作 {name}（加碼 / 減碼 / 結清）"):
                     op_col1, op_col2, op_col3 = st.columns(3)
                     with op_col1:
                         st.write("##### 🔼 順勢金字塔加碼")
@@ -452,4 +444,7 @@ with tab_portfolio:
                             st.rerun()
 
                 if history_logs:
-                    with st.expander(f"📜 {name} 加減碼歷程與損益
+                    expander_label = f"📜 {name} 加減碼歷程與損益痕跡 (目前剩餘: {shares:,} 股)"
+                    with st.expander(expander_label, expanded=False):
+                        df_history = pd.DataFrame(history_logs)
+                  
