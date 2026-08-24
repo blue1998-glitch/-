@@ -87,7 +87,7 @@ def calc_pnl(shares, avg_cost, current_price, fee_discount):
     total_buy_cost = (shares * avg_cost) * (1 + buy_fee_rate)
     total_sell_net = (shares * current_price) * (1 - sell_fee_rate - tax_rate)
     net_pnl = round(total_sell_net - total_buy_cost)
-    roi = round((net_pnl / total_buy_cost) * 100, 2)
+    roi = round((net_pnl / total_buy_cost) * 100, 2) if total_buy_cost > 0 else 0.0
     breakeven_price = round(avg_cost * (1 + buy_fee_rate + sell_fee_rate + tax_rate), 2)
     return net_pnl, roi, breakeven_price
 
@@ -152,13 +152,11 @@ with tab_leaderboard:
     # 篩選 RS >= 75
     df_raw = pd.DataFrame(market_rankings)
     if not df_raw.empty:
-        # 確保必要欄位存在
         if 'name' not in df_raw.columns:
             df_raw['name'] = df_raw['symbol']
         if 'market' not in df_raw.columns:
             df_raw['market'] = "台股"
 
-        # 篩選器
         filter_col1, filter_col2 = st.columns([1, 3])
         with filter_col1:
             min_rs = st.slider("最低 RS 門檻篩選", 70, 95, 75, 1)
@@ -170,7 +168,6 @@ with tab_leaderboard:
             (df_raw['market'].isin(market_filter))
         ].copy()
 
-        # 格式化顯示欄位
         filtered_df = filtered_df.sort_values(by="rs_rating", ascending=False)
         filtered_df['動能梯隊'] = filtered_df['rs_rating'].apply(
             lambda x: "🚀 第一梯隊 (RS 90+)" if x >= 90 else ("⚡ 第二梯隊 (RS 80-89)" if x >= 80 else "🔥 第三梯隊 (RS 75-79)")
@@ -239,7 +236,8 @@ with tab_portfolio:
                     "entry_date": str(entry_d),
                     "avg_cost": price,
                     "shares": int(shs),
-                    "record_high": price
+                    "record_high": price,
+                    "realized_pnl": 0
                 }
                 portfolio.append(new_item)
                 save_data(portfolio)
@@ -261,6 +259,7 @@ with tab_portfolio:
             avg_cost = item['avg_cost']
             shares = item['shares']
             stored_high = item.get('record_high', avg_cost)
+            realized_pnl = item.get('realized_pnl', 0)
 
             info = get_stock_rs_info(sym, market_rankings)
             rs_score = info.get('rs_rating', 50) if info else 50
@@ -328,12 +327,13 @@ with tab_portfolio:
                 m_col3.metric("近 1 季累積動能", f"{r_1q:+}%")
                 m_col4.metric("全市場 RS Rating", f"{rs_score} 分")
 
-                c1, c2, c3, c4 = st.columns(4)
+                c1, c2, c3, c4, c5 = st.columns(5)
                 c1.metric("最新市價 / 均價", f"${cur_price}", f"均價: ${avg_cost}")
                 c2.metric("未實現淨損益", f"{net_pnl:+,} 元", f"{roi:+}%")
+                c3.metric("累積已實現損益", f"{realized_pnl:+,} 元")
                 stop_label = "🛡️ 保本停損線" if is_breakeven_active else f"🔴 初始停損 (-{stop_loss_pct}%)"
-                c3.metric(stop_label, f"${effective_stop_price}")
-                c4.metric("波段最高 / 回檔線", f"${actual_high}", f"回檔價: ${pullback_price}")
+                c4.metric(stop_label, f"${effective_stop_price}")
+                c5.metric("波段最高 / 回檔線", f"${actual_high}", f"回檔價: ${pullback_price}")
 
                 st.markdown(f"**風控狀態：** :{status_color}[{status_text}]")
 
@@ -355,10 +355,23 @@ with tab_portfolio:
 
                     with op_col2:
                         st.write("##### 🔽 分批減碼")
-                        reduce_s = st.number_input("減碼股數", min_value=1, max_value=shares, step=100, key=f"red_s_{idx}")
+                        red_p = st.number_input("減碼價格", min_value=0.1, step=0.1, value=cur_price, key=f"red_p_{idx}")
+                        red_s = st.number_input("減碼股數", min_value=1, max_value=shares, step=100, value=min(1000, shares), key=f"red_s_{idx}")
+                        
+                        sim_red_pnl, sim_red_roi, _ = calc_pnl(int(red_s), avg_cost, red_p, discount_display)
+                        st.caption(f"試算本次實現損益：**{sim_red_pnl:+,} 元** ({sim_red_roi:+}%)")
+                        
                         if st.button("確認減碼", key=f"btn_red_{idx}"):
-                            portfolio[idx]['shares'] = shares - int(reduce_s)
-                            save_data(portfolio)
+                            new_shares = shares - int(red_s)
+                            current_realized = item.get('realized_pnl', 0)
+                            
+                            if new_shares > 0:
+                                portfolio[idx]['shares'] = new_shares
+                                portfolio[idx]['realized_pnl'] = current_realized + sim_red_pnl
+                                save_data(portfolio)
+                            else:
+                                portfolio.pop(idx)
+                                save_data(portfolio)
                             st.rerun()
 
                     with op_col3:
