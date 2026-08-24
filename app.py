@@ -129,96 +129,11 @@ if len(market_rankings) > 0:
 else:
     st.warning("🟡 正在等待全市場 RS 排名資料載入...")
 
-tab_leaderboard, tab_portfolio = st.tabs(["🏆 全市場 RS 排行榜 & 萬用個股查詢", "📈 個人持倉風控監控"])
+# 分頁宣告：已將個人持倉移至最前面
+tab_portfolio, tab_leaderboard = st.tabs(["📈 個人持倉風控監控", "🏆 全市場 RS 排行榜 & 萬用個股查詢"])
 
 # ==========================================
-# 分頁 1：全市場 RS 排行榜與個股查詢
-# ==========================================
-with tab_leaderboard:
-    st.subheader("🔍 萬用個股 RS 評分查詢")
-    search_col1, search_col2 = st.columns([3, 1])
-    with search_col1:
-        search_query = st.text_input("輸入股票代號或名稱查詢（例如：2330、聯一光、3441）", placeholder="請輸入代號或名稱...")
-    
-    if search_query:
-        query_str = search_query.strip().upper()
-        matched = [
-            item for item in market_rankings 
-            if query_str in str(item.get("symbol", "")).upper() or query_str in str(item.get("name", ""))
-        ]
-        
-        if matched:
-            st.write(f"找到 **{len(matched)}** 筆符合標的：")
-            for m in matched:
-                score = m.get("rs_rating", 50)
-                m_type = m.get("market", "上市/上櫃")
-                name = m.get("name", m.get("symbol"))
-                sym = m.get("symbol")
-                raw_score = m.get("score", 0.0)
-                
-                if score >= 85:
-                    badge_style = "🚀 極致動能領袖股 (前 15%)"
-                elif score >= 75:
-                    badge_style = "⚡ 強勢突破多頭股 (前 25%)"
-                elif score >= 50:
-                    badge_style = "➖ 盤整中平標的"
-                else:
-                    badge_style = "⚠️ 落後弱勢標的"
-
-                r_col1, r_col2, r_col3, r_col4 = st.columns(4)
-                r_col1.metric("標的", f"{name} ({sym})", m_type)
-                r_col2.metric("RS Rating 評分", f"{score} 分", badge_style)
-                r_col3.metric("綜合動能得分", f"{raw_score:+.2f}")
-                r_col4.metric("全市場地位", f"贏過全台 {score}% 股票")
-                st.markdown("---")
-        else:
-            st.error(f"查無符合「{search_query}」的標的，請確認代號或名稱是否正確。")
-
-    st.subheader("🏆 全市場 RS ≥ 75 領袖股強勢排行榜")
-    
-    df_raw = pd.DataFrame(market_rankings)
-    if not df_raw.empty:
-        if "name" not in df_raw.columns:
-            df_raw["name"] = df_raw["symbol"]
-        if "market" not in df_raw.columns:
-            df_raw["market"] = "台股"
-
-        filter_col1, filter_col2 = st.columns([1, 3])
-        with filter_col1:
-            min_rs = st.slider("最低 RS 門檻篩選", 70, 95, 75, 1)
-        with filter_col2:
-            market_filter = st.multiselect("市場別篩選", ["上市", "上櫃"], default=["上市", "上櫃"])
-
-        filtered_df = df_raw[
-            (df_raw["rs_rating"] >= min_rs) & 
-            (df_raw["market"].isin(market_filter))
-        ].copy()
-
-        filtered_df = filtered_df.sort_values(by="rs_rating", ascending=False)
-        filtered_df["動能梯隊"] = filtered_df["rs_rating"].apply(
-            lambda x: "🚀 第一梯隊 (RS 90+)" if x >= 90 else ("⚡ 第二梯隊 (RS 80-89)" if x >= 80 else "🔥 第三梯隊 (RS 75-79)")
-        )
-
-        display_df = filtered_df[["rs_rating", "symbol", "name", "market", "score", "動能梯隊"]].rename(columns={
-            "rs_rating": "RS 評分 (PR)",
-            "symbol": "股票代碼",
-            "name": "中文名稱",
-            "market": "上市櫃",
-            "score": "綜合動能得分"
-        })
-
-        st.caption(f"共計 **{len(display_df)}** 檔標的符合條件（RS ≥ {min_rs}）：")
-        st.dataframe(
-            display_df,
-            use_container_width=True,
-            hide_index=True,
-            height=500
-        )
-    else:
-        st.info("尚無排名資料，請先執行 Actions 排程產生資料。")
-
-# ==========================================
-# 分頁 2：個人持倉風控監控儀表板
+# 分頁 1：個人持倉風控監控儀表板
 # ==========================================
 with tab_portfolio:
     with st.expander("⚙️ 風控與動能參數設定", expanded=False):
@@ -454,3 +369,89 @@ with tab_portfolio:
                     with st.expander(f"📜 {name} 交易歷程 (剩餘 {shares:,} 股)", expanded=False):
                         df_h = pd.DataFrame(history_logs)
                         st.dataframe(df_h, use_container_width=True, hide_index=True)
+
+# ==========================================
+# 分頁 2：全市場 RS 排行榜與個股查詢
+# ==========================================
+with tab_leaderboard:
+    st.subheader("🔍 萬用個股 RS 評分查詢")
+    search_col1, search_col2 = st.columns([3, 1])
+    with search_col1:
+        search_query = st.text_input("輸入股票代號或名稱查詢（例如：2330、聯一光、3441）", placeholder="請輸入代號或名稱...")
+    
+    if search_query:
+        query_str = search_query.strip().upper()
+        matched = [
+            item for item in market_rankings 
+            if query_str in str(item.get("symbol", "")).upper() or query_str in str(item.get("name", ""))
+        ]
+        
+        if matched:
+            st.write(f"找到 **{len(matched)}** 筆符合標的：")
+            for m in matched:
+                score = m.get("rs_rating", 50)
+                m_type = m.get("market", "上市/上櫃")
+                name = m.get("name", m.get("symbol"))
+                sym = m.get("symbol")
+                raw_score = m.get("score", 0.0)
+                
+                if score >= 85:
+                    badge_style = "🚀 極致動能領袖股 (前 15%)"
+                elif score >= 75:
+                    badge_style = "⚡ 強勢突破多頭股 (前 25%)"
+                elif score >= 50:
+                    badge_style = "➖ 盤整中平標的"
+                else:
+                    badge_style = "⚠️ 落後弱勢標的"
+
+                r_col1, r_col2, r_col3, r_col4 = st.columns(4)
+                r_col1.metric("標的", f"{name} ({sym})", m_type)
+                r_col2.metric("RS Rating 評分", f"{score} 分", badge_style)
+                r_col3.metric("綜合動能得分", f"{raw_score:+.2f}")
+                r_col4.metric("全市場地位", f"贏過全台 {score}% 股票")
+                st.markdown("---")
+        else:
+            st.error(f"查無符合「{search_query}」的標的，請確認代號或名稱是否正確。")
+
+    st.subheader("🏆 全市場 RS ≥ 75 領袖股強勢排行榜")
+    
+    df_raw = pd.DataFrame(market_rankings)
+    if not df_raw.empty:
+        if "name" not in df_raw.columns:
+            df_raw["name"] = df_raw["symbol"]
+        if "market" not in df_raw.columns:
+            df_raw["market"] = "台股"
+
+        filter_col1, filter_col2 = st.columns([1, 3])
+        with filter_col1:
+            min_rs = st.slider("最低 RS 門檻篩選", 70, 95, 75, 1)
+        with filter_col2:
+            market_filter = st.multiselect("市場別篩選", ["上市", "上櫃"], default=["上市", "上櫃"])
+
+        filtered_df = df_raw[
+            (df_raw["rs_rating"] >= min_rs) & 
+            (df_raw["market"].isin(market_filter))
+        ].copy()
+
+        filtered_df = filtered_df.sort_values(by="rs_rating", ascending=False)
+        filtered_df["動能梯隊"] = filtered_df["rs_rating"].apply(
+            lambda x: "🚀 第一梯隊 (RS 90+)" if x >= 90 else ("⚡ 第二梯隊 (RS 80-89)" if x >= 80 else "🔥 第三梯隊 (RS 75-79)")
+        )
+
+        display_df = filtered_df[["rs_rating", "symbol", "name", "market", "score", "動能梯隊"]].rename(columns={
+            "rs_rating": "RS 評分 (PR)",
+            "symbol": "股票代碼",
+            "name": "中文名稱",
+            "market": "上市櫃",
+            "score": "綜合動能得分"
+        })
+
+        st.caption(f"共計 **{len(display_df)}** 檔標的符合條件（RS ≥ {min_rs}）：")
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            hide_index=True,
+            height=500
+        )
+    elselse:
+        st.info("尚無排名資料，請先執行 Actions 排程產生資料。")
