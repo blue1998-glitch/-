@@ -1,7 +1,7 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
 import json
 import os
 import requests
@@ -10,8 +10,17 @@ st.set_page_config(page_title="台股動能 RS 排行與風控儀表板", layout
 
 DATA_FILE = "portfolio.json"
 
+# 設定台灣時區 (UTC+8)
+TW_TZ = timezone(timedelta(hours=8))
+
+def get_tw_now():
+    return datetime.now(TW_TZ)
+
+def get_tw_now_str(fmt="%Y-%m-%d %H:%M:%S"):
+    return get_tw_now().strftime(fmt)
+
 if "last_portfolio_refresh" not in st.session_state:
-    st.session_state.last_portfolio_refresh = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    st.session_state.last_portfolio_refresh = get_tw_now_str()
 
 def load_data():
     if os.path.exists(DATA_FILE):
@@ -28,10 +37,11 @@ def save_data(data):
 
 @st.cache_data(ttl=60)
 def load_market_data():
+    # 1. 優先從伺服器本機讀取
     if os.path.exists("market_rankings.json"):
         try:
             mtime = os.path.getmtime("market_rankings.json")
-            mtime_str = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+            mtime_str = datetime.fromtimestamp(mtime, tz=TW_TZ).strftime("%Y-%m-%d %H:%M:%S")
             with open("market_rankings.json", "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if isinstance(data, list) and len(data) > 0:
@@ -39,13 +49,14 @@ def load_market_data():
         except Exception:
             pass
 
+    # 2. 自動連線 GitHub Raw
     try:
         url = "https://raw.githubusercontent.com/blue1998-glitch/-/main/market_rankings.json"
         res = requests.get(url, timeout=8)
         if res.status_code == 200:
             data = res.json()
             if isinstance(data, list) and len(data) > 0:
-                fetch_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                fetch_time = get_tw_now_str()
                 return data, f"GitHub 線上同步成功 (同步時間: {fetch_time})"
     except Exception as e:
         return [], f"連線異常: {str(e)}"
@@ -240,7 +251,7 @@ with tab_portfolio:
                 name = st.text_input("股票名稱", placeholder="例如: 聯一光")
             with col2:
                 mkt = st.selectbox("市場別", ["TWO (上櫃)", "TW (上市)"])
-                entry_d = st.date_input("進場日期", value=date.today())
+                entry_d = st.date_input("進場日期", value=get_tw_now().date())
             with col3:
                 price = st.number_input("買進價格", min_value=0.1, step=0.1, value=100.0)
                 shs = st.number_input("買進股數", min_value=1, step=1000, value=1000)
@@ -259,7 +270,7 @@ with tab_portfolio:
                     "realized_pnl": 0,
                     "history": [
                         {
-                            "時間": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                            "時間": get_tw_now_str("%Y-%m-%d %H:%M"),
                             "動作": "🌱 初始建倉",
                             "成交價": price,
                             "異動股數": f"+{int(shs)}",
@@ -281,10 +292,10 @@ with tab_portfolio:
         with rf_col1:
             if st.button("🔄 刷新最新市價與動能評分", use_container_width=True):
                 st.cache_data.clear()
-                st.session_state.last_portfolio_refresh = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                st.session_state.last_portfolio_refresh = get_tw_now_str()
                 st.rerun()
         with rf_col2:
-            st.success(f"🕒 **最新市價與持倉更新時間：{st.session_state.last_portfolio_refresh}**")
+            st.success(f"🕒 **台灣時間（最新市價更新成功）：{st.session_state.last_portfolio_refresh}**")
 
         for idx, item in enumerate(portfolio):
             sym = item['symbol']
@@ -314,7 +325,7 @@ with tab_portfolio:
             bias_20 = round(((cur_price - ma20) / ma20) * 100, 1) if ma20 > 0 else 0
             
             try:
-                days_held = (date.today() - datetime.strptime(entry_d, "%Y-%m-%d").date()).days
+                days_held = (get_tw_now().date() - datetime.strptime(entry_d, "%Y-%m-%d").date()).days
             except Exception:
                 days_held = 0
 
@@ -386,7 +397,7 @@ with tab_portfolio:
                         
                         if st.button("確認加碼", key=f"btn_add_{idx}"):
                             new_log = {
-                                "時間": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                "時間": get_tw_now_str("%Y-%m-%d %H:%M"),
                                 "動作": "🔼 順勢加碼",
                                 "成交價": add_p,
                                 "異動股數": f"+{int(add_s)}",
@@ -415,7 +426,7 @@ with tab_portfolio:
                             current_realized = item.get('realized_pnl', 0)
                             
                             new_log = {
-                                "時間": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                "時間": get_tw_now_str("%Y-%m-%d %H:%M"),
                                 "動作": "🔽 分批減碼",
                                 "成交價": red_p,
                                 "異動股數": f"-{int(red_s)}",
@@ -444,7 +455,4 @@ with tab_portfolio:
                             st.rerun()
 
                 if history_logs:
-                    expander_label = f"📜 {name} 加減碼歷程與損益痕跡 (目前剩餘: {shares:,} 股)"
-                    with st.expander(expander_label, expanded=False):
-                        df_history = pd.DataFrame(history_logs)
-                  
+                    expander_label = f"📜 {name} 加減碼歷程與損益痕跡 (目前
