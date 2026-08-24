@@ -9,8 +9,6 @@ import requests
 st.set_page_config(page_title="台股動能 RS 排行與風控儀表板", layout="wide", initial_sidebar_state="collapsed")
 
 DATA_FILE = "portfolio.json"
-
-# 設定台灣時區 (UTC+8)
 TW_TZ = timezone(timedelta(hours=8))
 
 def get_tw_now():
@@ -454,4 +452,4 @@ with tab_portfolio:
 
                 if history_logs:
                     with st.expander(f"📜 {name} 交易歷程 (剩餘 {shares:,} 股)", expanded=False):
-                   
+                        df_history = 
