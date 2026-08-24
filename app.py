@@ -458,7 +458,8 @@ with tab_leaderboard:
             for m in matched:
                 score = m.get("rs_rating", 50)
                 m_type = m.get("market", "上市/上櫃")
-                name = clean_stock_name(m.get("name", m.get("symbol")), m.get("symbol"))raw_score = m.get("score", 0.0)
+                name = clean_stock_name(m.get("name", m.get("symbol")), m.get("symbol"))
+                sym = m.get("symbol")
                 raw_score = m.get("score", 0.0)
                 badge_style = get_trend_master_status(m)
 
