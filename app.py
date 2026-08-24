@@ -194,7 +194,6 @@ COMMON_NAME_MAP = {
     "櫻花建設股份有限公司": "櫻花建",
     "晟田科技工業股份有限公司": "晟田",
     "昇益開發股份有限公司": "昇益",
-    "潤泰創新國際股份有限公司": "潤泰新",
     "宸曜科技股份有限公司": "宸曜",
     "和桐化學股份有限公司": "和桐",
     "億光電子工業股份有限公司": "億光",
@@ -229,6 +228,49 @@ def clean_stock_name(name):
             cleaned = cleaned.replace(suffix, "")
     cleaned = cleaned.strip()
     return cleaned if cleaned else raw
+
+# ==========================================
+# 順勢大師操作法則：動能狀態分類引擎
+# ==========================================
+def get_trend_master_status(row):
+    rs = row.get("rs_rating", 50)
+    badge = str(row.get("pattern_badge", ""))
+    r_5d = row.get("r_5d", 0.0)
+    
+    if rs >= 95:
+        if "新高" in badge or r_5d >= 10.0:
+            return "👑 頂級領袖・突破新高 (主力首選)"
+        elif "VCP" in badge:
+            return "🎯 頂級VCP・即將噴出 (極限強勢)"
+        else:
+            return "🚀 極致飆股・主升奔馳 (最強5%)"
+    elif rs >= 90:
+        if "VCP" in badge:
+            return "🎯 VCP蓄勢・突破在即 (黃金買點)"
+        elif "新高" in badge:
+            return "⭐ 領袖新高・順風追擊 (多頭先鋒)"
+        else:
+            return "🚀 狂暴主升・沿線抱牢 (第一梯隊)"
+    elif rs >= 80:
+        if "VCP" in badge:
+            return "🎯 VCP收縮・縮量待發 (觀察進場)"
+        elif "新高" in badge:
+            return "⭐ 區間突破・趨勢確立 (順勢加碼)"
+        elif "反彈" in badge:
+            return "⚠️ 短線強彈・觀察季線 (謹慎試單)"
+        else:
+            return "⚡ 強大多頭・順勢推升 (右側安全)"
+    elif rs >= 75:
+        if "反彈" in badge:
+            return "⚠️ 左側反彈・上方有壓 (短打勿追)"
+        elif "VCP" in badge:
+            return "🎯 底部收斂・轉強蓄勢 (第二梯隊)"
+        else:
+            return "🔥 突破初升・動能成型 (第三梯隊)"
+    elif rs >= 50:
+        return "📦 區間整理・等待表態 (動能平平)"
+    else:
+        return "⛔ 弱勢落後・左側不碰 (避開死水)"
 
 def load_data():
     if os.path.exists(DATA_FILE):
@@ -462,14 +504,7 @@ with tab_portfolio:
             except Exception:
                 days_held = 0
 
-            if rs_score >= 85:
-                rs_badge = f"🚀 極致爆發 (RS {rs_score} / 前 15%)"
-            elif rs_score >= 70:
-                rs_badge = f"⚡ 強勢動能 (RS {rs_score})"
-            elif rs_score >= 50:
-                rs_badge = f"➖ 動能中平 (RS {rs_score})"
-            else:
-                rs_badge = f"⚠️ 動能落後 (RS {rs_score})"
+            status_badge = get_trend_master_status(info if info else {"rs_rating": rs_score, "pattern_badge": "", "r_5d": r_5d})
 
             max_gain_pct = ((actual_high - avg_cost) / avg_cost) * 100
             is_breakeven_active = max_gain_pct >= breakeven_trigger_pct
@@ -499,7 +534,7 @@ with tab_portfolio:
 
             with st.container():
                 st.markdown("---")
-                st.subheader(f"{name} ({sym}.{mkt}) ｜ 📦 剩餘: {shares:,} 股 ｜ 持有 {days_held} 天 ｜ {rs_badge}")
+                st.subheader(f"{name} ({sym}.{mkt}) ｜ 📦 剩餘: {shares:,} 股 ｜ 持有 {days_held} 天 ｜ {status_badge}")
                 
                 m_col1, m_col2, m_col3, m_col4 = st.columns(4)
                 m_col1.metric("近 5 日累積動能", f"{r_5d:+}%")
@@ -616,15 +651,7 @@ with tab_leaderboard:
                 name = m.get("name", m.get("symbol"))
                 sym = m.get("symbol")
                 raw_score = m.get("score", 0.0)
-                
-                if score >= 85:
-                    badge_style = "🚀 極致動能領袖股 (前 15%)"
-                elif score >= 75:
-                    badge_style = "⚡ 強勢突破多頭股 (前 25%)"
-                elif score >= 50:
-                    badge_style = "➖ 盤整中平標的"
-                else:
-                    badge_style = "⚠️ 落後弱勢標的"
+                badge_style = get_trend_master_status(m)
 
                 r_col1, r_col2, r_col3, r_col4 = st.columns(4)
                 r_col1.metric("標的", f"{name} ({sym})", m_type)
@@ -656,11 +683,9 @@ with tab_leaderboard:
         ].copy()
 
         filtered_df = filtered_df.sort_values(by="rs_rating", ascending=False)
-        filtered_df["動能梯隊"] = filtered_df["rs_rating"].apply(
-            lambda x: "🚀 第一梯隊 (RS 90+)" if x >= 90 else ("⚡ 第二梯隊 (RS 80-89)" if x >= 80 else "🔥 第三梯隊 (RS 75-79)")
-        )
+        filtered_df["順勢操作狀態"] = filtered_df.apply(get_trend_master_status, axis=1)
 
-        display_df = filtered_df[["rs_rating", "symbol", "name", "market", "score", "動能梯隊"]].rename(columns={
+        display_df = filtered_df[["rs_rating", "symbol", "name", "market", "score", "順勢操作狀態"]].rename(columns={
             "rs_rating": "RS 評分 (PR)",
             "symbol": "股票代碼",
             "name": "中文名稱",
