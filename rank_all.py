@@ -1,136 +1,215 @@
-import yfinance as yf
-import pandas as pd
+import os
 import json
 import time
+import math
 import requests
-import sys
+import numpy as np
+import pandas as pd
+import yfinance as yf
+from datetime import datetime, timedelta
 
-def get_tw_market_tickers():
-    """抓取全台股代號、中文簡稱與上市櫃類別"""
-    target_list = []
-    headers = {"User-Agent": "Mozilla/5.0"}
-    
-    # 1. 上市 (TWSE)
-    try:
-        url_twse = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
-        res = requests.get(url_twse, headers=headers, timeout=12)
-        if res.status_code == 200:
-            for row in res.json():
-                c = str(row.get('公司代號', '')).strip()
-                n = str(row.get('公司簡稱', row.get('公司名稱', c))).strip()
-                if len(c) == 4 and c.isdigit():
-                    target_list.append({"symbol": c, "name": n, "market": "上市", "ticker": f"{c}.TW"})
-    except Exception as e:
-        print(f"TWSE API 連線異常: {e}")
-
-    # 2. 上櫃 (TPEx)
-    try:
-        url_tpex = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
-        res = requests.get(url_tpex, headers=headers, timeout=12)
-        if res.status_code == 200:
-            for row in res.json():
-                c = str(row.get('SecuritiesCompanyCode', row.get('公司代號', ''))).strip()
-                n = str(row.get('CompanyAbbreviation', row.get('SecuritiesCompanyName', row.get('公司簡稱', c)))).strip()
-                if len(c) == 4 and c.isdigit():
-                    target_list.append({"symbol": c, "name": n, "market": "上櫃", "ticker": f"{c}.TWO"})
-    except Exception as e:
-        print(f"TPEx API 連線異常: {e}")
-
-    # 去重
-    unique_map = {}
-    for item in target_list:
-        if item["symbol"] not in unique_map:
-            unique_map[item["symbol"]] = item
-
-    return list(unique_map.values())
-
-def main():
-    stock_info_list = get_tw_market_tickers()
-    print(f"成功取得台股全市場 {len(stock_info_list)} 檔標的資料，開始批次下載動能...")
-
-    if len(stock_info_list) < 500:
-        print("❌ 取得代號數量不足，取消覆蓋檔案。")
-        sys.exit(1)
-
-    all_tickers = [item["ticker"] for item in stock_info_list]
-    ticker_to_info = {item["ticker"]: item for item in stock_info_list}
-
-    chunk_size = 60
-    market_data = []
-
-    for i in range(0, len(all_tickers), chunk_size):
-        chunk = all_tickers[i:i + chunk_size]
+def load_theme_mapping():
+    mapping_path = "data/theme_mapping.json"
+    if os.path.exists(mapping_path):
         try:
-            df = yf.download(
-                tickers=chunk,
-                period="6mo",
-                interval="1d",
-                auto_adjust=False,
-                progress=False,
-                threads=True,
-                timeout=20
-            )
-
-            if df is not None and not df.empty and 'Close' in df:
-                closes_df = df['Close']
-
-                for ticker in chunk:
-                    try:
-                        if isinstance(closes_df, pd.DataFrame):
-                            if ticker in closes_df.columns:
-                                series = closes_df[ticker].dropna()
-                            else:
-                                continue
-                        elif isinstance(closes_df, pd.Series):
-                            series = closes_df.dropna()
-                        else:
-                            continue
-
-                        if len(series) < 10:
-                            continue
-
-                        p_now = float(series.iloc[-1])
-                        p_5d = float(series.iloc[-6]) if len(series) >= 6 else float(series.iloc[0])
-                        p_1m = float(series.iloc[-21]) if len(series) >= 21 else float(series.iloc[0])
-                        p_1q = float(series.iloc[-61]) if len(series) >= 61 else float(series.iloc[0])
-
-                        r_5d = ((p_now - p_5d) / p_5d) * 100
-                        r_1m = ((p_now - p_1m) / p_1m) * 100
-                        r_1q = ((p_now - p_1q) / p_1q) * 100
-
-                        score = round((r_5d * 0.2) + (r_1m * 0.5) + (r_1q * 0.3), 2)
-                        info = ticker_to_info[ticker]
-                        
-                        market_data.append({
-                            "symbol": info["symbol"],
-                            "name": info["name"],
-                            "market": info["market"],
-                            "score": score
-                        })
-                    except Exception:
-                        continue
+            with open(mapping_path, "r", encoding="utf-8") as f:
+                return json.load(f)
         except Exception:
             pass
+    return {}
 
-        time.sleep(0.4)
+def fetch_all_tw_stocks():
+    stocks = {}
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        twse = requests.get("https://openapi.twse.com.tw/v1/opendata/t187ap03_L", headers=headers, timeout=12).json()
+        for r in twse:
+            c = str(r.get("公司代號", "")).strip()
+            n = str(r.get("公司名稱", "")).strip()
+            ind = str(r.get("產業別", "")).strip()
+            if len(c) == 4 and c.isdigit():
+                stocks[c] = {"name": n, "market": "上市", "symbol_yf": f"{c}.TW", "main_industry": ind}
+    except Exception as e:
+        print(f"TWSE 清單抓取異常: {e}")
 
-    # 排序並計算全市場 PR 百分位 (1 ~ 99)
-    market_data.sort(key=lambda x: x['score'], reverse=True)
-    total_count = len(market_data)
-    print(f"成功收錄 {total_count} 檔有效股票，開始計算全市場 PR 百分位...")
+    try:
+        tpex = requests.get("https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O", headers=headers, timeout=12).json()
+        for r in tpex:
+            c = str(r.get("SecuritiesCompanyCode", "")).strip()
+            n = str(r.get("CompanyName", "")).strip()
+            ind = str(r.get("Industry", "")).strip()
+            if len(c) == 4 and c.isdigit():
+                stocks[c] = {"name": n, "market": "上櫃", "symbol_yf": f"{c}.TWO", "main_industry": ind}
+    except Exception as e:
+        print(f"TPEx 清單抓取異常: {e}")
 
-    if total_count < 1000:
-        print(f"❌ 警告：成功計算筆數 ({total_count}) 低於 1000，取消覆蓋檔案。")
-        sys.exit(1)
+    return stocks
 
-    for idx, item in enumerate(market_data):
-        pr = max(1, min(99, int(((total_count - idx) / total_count) * 100)))
-        item['rs_rating'] = pr
+# =========================================================================
+# 🎯 替換核心：taiwan-stock-rs-main 之最新順勢大師 VCP 計算公式
+# =========================================================================
+def calculate_master_vcp_score(df_hist):
+    """
+    1. 創新高強烈獎勵 (H_prox)
+    2. VCP 波動極窄收斂加乘 (V_tight)
+    3. 趨勢均線濾網 (T_trend)
+    4. 破底死貓反彈重度懲罰
+    """
+    if len(df_hist) < 60:
+        return None
 
+    closes = df_hist['Close'].values
+    highs = df_hist['High'].values
+    lows = df_hist['Low'].values
+
+    p_now = float(closes[-1])
+    p_5d = float(closes[-6])
+    p_20d = float(closes[-21])
+    p_60d = float(closes[-61])
+
+    # 1. 多週期實質動能 (5日30%、20日45%、60日25%)
+    r_5d = ((p_now - p_5d) / p_5d) * 100.0
+    r_20d = ((p_now - p_20d) / p_20d) * 100.0
+    r_60d = ((p_now - p_60d) / p_60d) * 100.0
+    base_momentum = (r_5d * 0.30) + (r_20d * 0.45) + (r_60d * 0.25)
+
+    # 2. 距 60 日高點距離 (Proximity to 60D High)
+    high_60d = float(np.max(highs[-60:]))
+    if high_60d <= 0:
+        return None
+    off_high_pct = max(0.0, ((high_60d - p_now) / high_60d) * 100.0)
+
+    if off_high_pct <= 0.5:
+        h_prox = 1.25  # 創 60 日新高，給予 1.25 倍突破爆發獎勵
+    elif off_high_pct <= 8.0:
+        h_prox = 1.12 - (off_high_pct / 8.0) * 0.12  # 距高點 8% 內，微幅加成 (1.12 ~ 1.0)
+    elif off_high_pct <= 18.0:
+        h_prox = 1.0 - ((off_high_pct - 8.0) / 10.0) * 0.25  # 距高點 8~18%，輕微衰減 (1.0 ~ 0.75)
+    else:
+        # 跌幅大於 18%，上方套牢賣壓沉重，重罰
+        h_prox = max(0.20, 0.75 - ((off_high_pct - 18.0) / 20.0) * 0.55)
+
+    # 3. VCP 波動收斂度 (10日極窄震幅)
+    high_10d = float(np.max(highs[-10:]))
+    low_10d = float(np.min(lows[-10:]))
+    range_10d = ((high_10d - low_10d) / max(0.01, low_10d)) * 100.0
+
+    if range_10d <= 7.0 and off_high_pct <= 10.0:
+        v_tight = 1.18  # 經典 VCP 收縮蓄勢（即將突破）
+    elif range_10d <= 12.0 and off_high_pct <= 12.0:
+        v_tight = 1.08  # 次級收縮
+    elif range_10d > 22.0:
+        v_tight = 0.85  # 寬幅震盪洗盤
+    else:
+        v_tight = 1.00
+
+    # 4. 均線趨勢濾網與死貓反彈懲罰
+    ma20 = float(np.mean(closes[-20:]))
+    ma60 = float(np.mean(closes[-60:]))
+
+    t_trend = 1.0
+    if p_now < ma60:
+        t_trend *= 0.35  # 季線之下，嚴格壓制
+    if p_now < ma20:
+        t_trend *= 0.75  # 月線之下
+    if r_20d < 0 and r_5d > 0:
+        t_trend *= 0.65  # 月線走跌之短線反彈（死貓反彈折扣）
+
+    final_score = base_momentum * h_prox * v_tight * t_trend
+
+    # 5. 型態特徵標籤
+    if off_high_pct <= 1.0 and r_5d >= 2.0:
+        pattern_badge = "⭐ 歷史/區間新高"
+    elif off_high_pct <= 8.0 and range_10d <= 8.0:
+        pattern_badge = "🎯 VCP收縮蓄勢"
+    elif off_high_pct <= 12.0 and p_now >= ma20:
+        pattern_badge = "🚀 右側強勢整理"
+    elif r_20d < 0 and r_5d > 0:
+        pattern_badge = "⚠️ 左側弱勢反彈"
+    else:
+        pattern_badge = "📦 區間整理"
+
+    return {
+        "close_price": round(p_now, 2),
+        "r_5d": round(r_5d, 2),
+        "r_20d": round(r_20d, 2),
+        "r_60d": round(r_60d, 2),
+        "score": round(final_score, 2),
+        "pattern_badge": pattern_badge,
+        "off_high_pct": round(off_high_pct, 1),
+        "range_10d": round(range_10d, 1)
+    }
+
+def main():
+    print("🚀 [1/4] 啟動全市場順勢大師 VCP 動能排程...")
+    stock_dict = fetch_all_tw_stocks()
+    theme_mapping = load_theme_mapping()
+    all_symbols = list(stock_dict.keys())
+    print(f"  ✔ 抓取到 {len(all_symbols)} 檔個股母體")
+
+    batch_size = 80
+    calculated_results = []
+    
+    print("📡 [2/4] 批次下載歷史 K 線並執行 VCP/新高接近度量化運算...")
+    for i in range(0, len(all_symbols), batch_size):
+        batch_syms = all_symbols[i:i+batch_size]
+        yf_tickers = [stock_dict[s]["symbol_yf"] for s in batch_syms]
+        try:
+            data = yf.download(yf_tickers, period="6mo", interval="1d", group_by="ticker", threads=True, progress=False)
+            for s in batch_syms:
+                yf_sym = stock_dict[s]["symbol_yf"]
+                if yf_sym in data.columns.levels[0]:
+                    df_sub = data[yf_sym].dropna()
+                    if len(df_sub) >= 60:
+                        calc_res = calculate_master_vcp_score(df_sub)
+                        if calc_res:
+                            meta = stock_dict[s]
+                            theme_info = theme_mapping.get(s, {})
+                            themes = theme_info.get("themes", [])
+                            micro_themes = theme_info.get("micro_themes", [])
+                            
+                            pattern_tag = calc_res["pattern_badge"]
+                            merged_micro = [pattern_tag] + [t for t in micro_themes if t != pattern_tag]
+
+                            calculated_results.append({
+                                "symbol": s,
+                                "name": meta["name"],
+                                "market": meta["market"],
+                                "main_industry": theme_info.get("main_industry", meta["main_industry"]),
+                                "sub_industry": theme_info.get("sub_industry", f"{meta['main_industry']}應用"),
+                                "close_price": calc_res["close_price"],
+                                "r_5d": calc_res["r_5d"],
+                                "r_20d": calc_res["r_20d"],
+                                "r_60d": calc_res["r_60d"],
+                                "score": calc_res["score"],
+                                "themes": themes,
+                                "micro_themes": merged_micro,
+                                "pattern_badge": pattern_tag
+                            })
+        except Exception as e:
+            print(f"批次處理異常 ({i}~{i+batch_size}): {e}")
+        time.sleep(0.3)
+
+    print(f"📊 [3/4] 成功計算 {len(calculated_results)} 檔個股，執行全市場 PR 換算...")
+    if not calculated_results:
+        print("❌ 計算結果為空，中止寫入")
+        return
+
+    df_calc = pd.DataFrame(calculated_results)
+    df_calc = df_calc.sort_values(by="score", ascending=False).reset_index(drop=True)
+    total_valid = len(df_calc)
+
+    def compute_pr(rank_idx):
+        pr = math.floor(((total_valid - rank_idx) / total_valid) * 100.0)
+        return max(1, min(99, pr))
+
+    df_calc["rs_rating"] = [compute_pr(i) for i in range(total_valid)]
+
+    final_output = df_calc.to_dict(orient="records")
     with open("market_rankings.json", "w", encoding="utf-8") as f:
-        json.dump(market_data, f, ensure_ascii=False, indent=2)
+        json.dump(final_output, f, ensure_ascii=False, indent=2)
 
-    print(f"✅ 全市場排名大功告成！共計收錄 {total_count} 檔股票。")
+    print(f"🎉 [4/4] market_rankings.json 產出完成！全市場共 {len(final_output)} 檔個股完成順勢大師 RS 評級。")
 
 if __name__ == "__main__":
     main()
