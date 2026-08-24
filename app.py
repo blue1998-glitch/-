@@ -440,7 +440,6 @@ else:
     st.warning("🟡 正在等待全市場 RS 排名資料載入...")
 
 tab_portfolio, tab_leaderboard = st.tabs(["📈 個人持倉風控監控", "🏆 全市場 RS 排行榜 & 萬用個股查詢"])
-
 # ==========================================
 # 分頁 1：個人持倉風控監控儀表板
 # ==========================================
@@ -506,7 +505,7 @@ with tab_portfolio:
                 st.success(f"已新增 {new_item['name']} ({sym})")
                 st.rerun()
 
-if not portfolio:
+    if not portfolio:
         st.info("目前尚無持倉，請點擊上方「➕ 新增持股」建立第一檔股票。")
     else:
         rf_col1, rf_col2 = st.columns([1, 4])
@@ -661,7 +660,7 @@ if not portfolio:
                                 save_data(portfolio)
                             st.rerun()
 
-with op_col3:
+                    with op_col3:
                         st.write("##### 🗑️ 結清出場")
                         if st.button("結清持倉", key=f"del_{idx}"):
                             portfolio.pop(idx)
