@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
+# 1. 抓取全市場官方母體清單 (維持原樣)
 def fetch_all_tw_stocks():
     stocks = {}
     headers = {"User-Agent": "Mozilla/5.0"}
@@ -34,14 +35,8 @@ def fetch_all_tw_stocks():
 
     return stocks
 
-def calculate_master_vcp_score(df_hist):
-    """
-    順勢大師 VCP × 新高接近度動能引擎：
-    1. 創新高 1.25 倍加乘 (H_prox)
-    2. VCP 波動收斂 1.18 倍加乘 (V_tight)
-    3. 季線/月線均線濾網 (T_trend)
-    4. 死貓反彈重度懲罰
-    """
+# 2. 升級後的 RS 核心公式：順勢大師 VCP × 新高接近度
+def calculate_master_rs_score(df_hist):
     if len(df_hist) < 60:
         return None
 
@@ -54,22 +49,22 @@ def calculate_master_vcp_score(df_hist):
     p_20d = float(closes[-21])
     p_60d = float(closes[-61])
 
-    # 1. 多週期實質動能
+    # 1. 多週期實質動能 (5日30%、20日45%、60日25%)
     r_5d = ((p_now - p_5d) / p_5d) * 100.0
     r_20d = ((p_now - p_20d) / p_20d) * 100.0
     r_60d = ((p_now - p_60d) / p_60d) * 100.0
     base_momentum = (r_5d * 0.30) + (r_20d * 0.45) + (r_60d * 0.25)
 
-    # 2. 距 60 日高點距離 (Proximity)
+    # 2. 距 60 日高點距離 (Proximity to 60D High)
     high_60d = float(np.max(highs[-60:]))
     if high_60d <= 0:
         return None
     off_high_pct = max(0.0, ((high_60d - p_now) / high_60d) * 100.0)
 
     if off_high_pct <= 0.5:
-        h_prox = 1.25  # 創 60 日新高
+        h_prox = 1.25  # 創 60 日新高獎勵
     elif off_high_pct <= 8.0:
-        h_prox = 1.12 - (off_high_pct / 8.0) * 0.12  # 距高點 8% 內
+        h_prox = 1.12 - (off_high_pct / 8.0) * 0.12  # 距高點 8% 內微幅加成
     elif off_high_pct <= 18.0:
         h_prox = 1.0 - ((off_high_pct - 8.0) / 10.0) * 0.25
     else:
@@ -89,7 +84,7 @@ def calculate_master_vcp_score(df_hist):
     else:
         v_tight = 1.00
 
-    # 4. 均線趨勢濾網與反彈波折扣
+    # 4. 均線趨勢濾網與死貓反彈懲罰
     ma20 = float(np.mean(closes[-20:]))
     ma60 = float(np.mean(closes[-60:]))
 
@@ -103,29 +98,17 @@ def calculate_master_vcp_score(df_hist):
 
     final_score = base_momentum * h_prox * v_tight * t_trend
 
-    # 5. 型態標籤
-    if off_high_pct <= 1.0 and r_5d >= 2.0:
-        pattern_badge = "⭐ 歷史/區間新高"
-    elif off_high_pct <= 8.0 and range_10d <= 8.0:
-        pattern_badge = "🎯 VCP收縮蓄勢"
-    elif off_high_pct <= 12.0 and p_now >= ma20:
-        pattern_badge = "🚀 右側強勢整理"
-    elif r_20d < 0 and r_5d > 0:
-        pattern_badge = "⚠️ 左側弱勢反彈"
-    else:
-        pattern_badge = "📦 區間整理"
-
     return {
         "close_price": round(p_now, 2),
         "r_5d": round(r_5d, 2),
         "r_20d": round(r_20d, 2),
         "r_60d": round(r_60d, 2),
-        "score": round(final_score, 2),
-        "pattern_badge": pattern_badge
+        "score": round(final_score, 2)
     }
 
+# 3. 批次下載、全市場排序與 JSON 產出 (維持原結構)
 def main():
-    print("🚀 啟動全市場順勢大師 RS 動能排程...")
+    print("🚀 啟動全市場 RS 動能排程...")
     stock_dict = fetch_all_tw_stocks()
     all_symbols = list(stock_dict.keys())
     print(f"  ✔ 抓取到 {len(all_symbols)} 檔個股母體")
@@ -143,7 +126,7 @@ def main():
                 if yf_sym in data.columns.levels[0]:
                     df_sub = data[yf_sym].dropna()
                     if len(df_sub) >= 60:
-                        calc_res = calculate_master_vcp_score(df_sub)
+                        calc_res = calculate_master_rs_score(df_sub)
                         if calc_res:
                             meta = stock_dict[s]
                             calculated_results.append({
@@ -155,11 +138,10 @@ def main():
                                 "r_5d": calc_res["r_5d"],
                                 "r_20d": calc_res["r_20d"],
                                 "r_60d": calc_res["r_60d"],
-                                "score": calc_res["score"],
-                                "pattern_badge": calc_res["pattern_badge"]
+                                "score": calc_res["score"]
                             })
         except Exception as e:
-            print(f"批次下載異常 ({i}~{i+batch_size}): {e}")
+            print(f"批次處理異常 ({i}~{i+batch_size}): {e}")
         time.sleep(0.3)
 
     if not calculated_results:
@@ -180,7 +162,7 @@ def main():
     with open("market_rankings.json", "w", encoding="utf-8") as f:
         json.dump(final_output, f, ensure_ascii=False, indent=2)
 
-    print(f"🎉 market_rankings.json 產出完成！共 {len(final_output)} 檔個股完成評級。")
+    print(f"🎉 market_rankings.json 產出完成！全市場共 {len(final_output)} 檔個股完成 RS 評級。")
 
 if __name__ == "__main__":
     main()
