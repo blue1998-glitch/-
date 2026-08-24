@@ -37,7 +37,6 @@ def save_data(data):
 
 @st.cache_data(ttl=60)
 def load_market_data():
-    # 1. 優先從伺服器本機讀取
     if os.path.exists("market_rankings.json"):
         try:
             mtime = os.path.getmtime("market_rankings.json")
@@ -45,11 +44,10 @@ def load_market_data():
             with open("market_rankings.json", "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if isinstance(data, list) and len(data) > 0:
-                    return data, f"本機檔案載入成功 (資料產出時間: {mtime_str})"
+                    return data, f"本機檔案載入成功 (產出時間: {mtime_str})"
         except Exception:
             pass
 
-    # 2. 自動連線 GitHub Raw
     try:
         url = "https://raw.githubusercontent.com/blue1998-glitch/-/main/market_rankings.json"
         res = requests.get(url, timeout=8)
@@ -455,4 +453,5 @@ with tab_portfolio:
                             st.rerun()
 
                 if history_logs:
-                    expander_label = f"📜 {name} 加減碼歷程與損益痕跡 (目前
+                    with st.expander(f"📜 {name} 交易歷程 (剩餘 {shares:,} 股)", expanded=False):
+                   
