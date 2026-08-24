@@ -48,33 +48,69 @@ div.stButton > button:hover {
 </style>
 """, unsafe_allow_html=True)
 
-# ----------------- 2. 載入資料庫 -----------------
+# ----------------- 2. 載入資料庫（含結構防禦校正） -----------------
 @st.cache_data(ttl=60)
 def load_market_data():
+    raw_data = None
+    status_msg = "備援資料"
+
     if os.path.exists("market_rankings.json"):
         try:
             with open("market_rankings.json", "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, list) and len(data) > 0:
-                    return pd.DataFrame(data), "本機檔案載入成功"
+                d = json.load(f)
+                if isinstance(d, list) and len(d) > 0:
+                    raw_data = d
+                    status_msg = "本機檔案載入成功"
         except Exception:
             pass
 
-    try:
-        url = "https://raw.githubusercontent.com/blue1998-glitch/-/main/market_rankings.json"
-        res = requests.get(url, timeout=8)
-        if res.status_code == 200:
-            data = res.json()
-            if isinstance(data, list) and len(data) > 0:
-                return pd.DataFrame(data), "GitHub 線上同步成功"
-    except Exception:
-        pass
+    if not raw_data:
+        try:
+            url = "https://raw.githubusercontent.com/blue1998-glitch/-/main/market_rankings.json"
+            res = requests.get(url, timeout=8)
+            if res.status_code == 200:
+                d = res.json()
+                if isinstance(d, list) and len(d) > 0:
+                    raw_data = d
+                    status_msg = "GitHub 線上同步成功"
+        except Exception:
+            pass
 
-    return pd.DataFrame([
-        {"symbol": "8033", "name": "雷虎", "market": "上市", "close_price": 62.0, "r_5d": 6.8, "r_20d": 16.0, "r_60d": 30.0, "score": 24.36, "rs_rating": 99, "main_industry": "航太與國防", "sub_industry": "無人載具製造", "themes": ["軍用商規無人機"], "micro_themes": ["⭐ 歷史/區間新高", "軍用商規無人機"]},
-        {"symbol": "2645", "name": "長榮航太", "market": "上市", "close_price": 108.5, "r_5d": 3.2, "r_20d": 12.5, "r_60d": 25.0, "score": 18.39, "rs_rating": 94, "main_industry": "航太與國防", "sub_industry": "航太維修與發動機製造", "themes": ["軍用商規無人機", "GE航太發動機供應鏈"], "micro_themes": ["🎯 VCP收縮蓄勢", "GE航太發動機供應鏈"]},
-        {"symbol": "2330", "name": "台積電", "market": "上市", "close_price": 980.0, "r_5d": 4.5, "r_20d": 15.0, "r_60d": 32.0, "score": 22.00, "rs_rating": 98, "main_industry": "半導體業", "sub_industry": "晶圓代工龍頭", "themes": ["矽光子(CPO)", "CoWoS先進封裝"], "micro_themes": ["⭐ 歷史/區間新高", "矽光子(CPO)"]}
-    ]), "備援範例資料"
+    if not raw_data:
+        raw_data = [
+            {"symbol": "8033", "name": "雷虎", "market": "上市", "close_price": 62.0, "r_5d": 6.8, "r_20d": 16.0, "r_60d": 30.0, "score": 24.36, "rs_rating": 99, "main_industry": "航太與國防", "sub_industry": "無人載具製造", "themes": ["軍用商規無人機"], "micro_themes": ["⭐ 歷史/區間新高", "軍用商規無人機"]},
+            {"symbol": "2645", "name": "長榮航太", "market": "上市", "close_price": 108.5, "r_5d": 3.2, "r_20d": 12.5, "r_60d": 25.0, "score": 18.39, "rs_rating": 94, "main_industry": "航太與國防", "sub_industry": "航太維修與發動機製造", "themes": ["軍用商規無人機", "GE航太發動機供應鏈"], "micro_themes": ["🎯 VCP收縮蓄勢", "GE航太發動機供應鏈"]},
+            {"symbol": "2330", "name": "台積電", "market": "上市", "close_price": 980.0, "r_5d": 4.5, "r_20d": 15.0, "r_60d": 32.0, "score": 22.00, "rs_rating": 98, "main_industry": "半導體業", "sub_industry": "晶圓代工龍頭", "themes": ["矽光子(CPO)", "CoWoS先進封裝"], "micro_themes": ["⭐ 歷史/區間新高", "矽光子(CPO)"]}
+        ]
+
+    df = pd.DataFrame(raw_data)
+
+    # 確保欄位完整與格式健全
+    if "symbol" not in df.columns: df["symbol"] = ""
+    if "name" not in df.columns: df["name"] = ""
+    if "market" not in df.columns: df["market"] = "上市"
+    if "main_industry" not in df.columns: df["main_industry"] = "其他"
+    if "sub_industry" not in df.columns: df["sub_industry"] = df["main_industry"] + "應用"
+    if "close_price" not in df.columns: df["close_price"] = 0.0
+    if "r_5d" not in df.columns: df["r_5d"] = 0.0
+    if "r_20d" not in df.columns: df["r_20d"] = 0.0
+    if "r_60d" not in df.columns: df["r_60d"] = 0.0
+    if "score" not in df.columns: df["score"] = 0.0
+    if "rs_rating" not in df.columns: df["rs_rating"] = 50
+
+    # 陣列型別保底轉化
+    df["themes"] = df["themes"].apply(lambda x: x if isinstance(x, list) else ([] if pd.isna(x) or not x else [str(x)]))
+    df["micro_themes"] = df.get("micro_themes", df["themes"]).apply(lambda x: x if isinstance(x, list) else ([] if pd.isna(x) or not x else [str(x)]))
+
+    df["symbol"] = df["symbol"].astype(str)
+    df["name"] = df["name"].astype(str)
+    df["main_industry"] = df["main_industry"].fillna("其他").astype(str)
+    df["sub_industry"] = df["sub_industry"].fillna("").astype(str)
+    df["rs_rating"] = pd.to_numeric(df["rs_rating"], errors="coerce").fillna(50).astype(int)
+    df["score"] = pd.to_numeric(df["score"], errors="coerce").fillna(0.0).round(2)
+    df["close_price"] = pd.to_numeric(df["close_price"], errors="coerce").fillna(0.0).round(2)
+
+    return df, status_msg
 
 df_market, db_status = load_market_data()
 
@@ -89,6 +125,7 @@ def calc_adaptive_theme_score(sub_df):
     strong_stocks = [r for r in sorted_rs if r >= 80]
     strong_count = len(strong_stocks)
 
+    # 1. 領袖基準分 (方案 A: Top 3 權重 0.50, 0.30, 0.20)
     if n == 1:
         base_top = float(top1_rs)
     elif n == 2:
@@ -96,14 +133,17 @@ def calc_adaptive_theme_score(sub_df):
     else:
         base_top = float(sorted_rs[0] * 0.50 + sorted_rs[1] * 0.30 + sorted_rs[2] * 0.20)
 
+    # 2. 貝氏平滑共振率 + 絕對兵力深度補償
     smoothed_rate = (strong_count + 0.4) / (n + 2)
     depth_ratio = min(strong_count, 4) / 4.0
     resonance_multiplier = 1.0 + (0.12 * smoothed_rate + 0.06 * depth_ratio)
 
+    # 3. 雙軌取大值 (先鋒極速分 beta = 0.92)
     vanguard_score = top1_rs * 0.92
     resonance_score = base_top * resonance_multiplier
     final_score = max(vanguard_score, resonance_score)
 
+    # 4. 題材狀態徽章判定
     raw_rate = strong_count / n
     if top1_rs >= 90 and raw_rate <= 0.34 and strong_count <= 2:
         stage_badge = "🚀 先鋒突圍"
@@ -116,6 +156,7 @@ def calc_adaptive_theme_score(sub_df):
 
     return round(final_score, 1), stage_badge, top1_rs, strong_count, round(base_top, 1)
 
+# 題材統計彙整
 all_themes = sorted(list(set(t for sublist in df_market["themes"] for t in sublist if t)))
 theme_stats = []
 theme_badge_map = {}
@@ -137,9 +178,12 @@ for th in all_themes:
             "total_count": len(sub_df)
         })
 
-df_theme_ranked = pd.DataFrame(theme_stats).sort_values(by="final_score", ascending=False)
+if theme_stats:
+    df_theme_ranked = pd.DataFrame(theme_stats).sort_values(by="final_score", ascending=False).reset_index(drop=True)
+else:
+    df_theme_ranked = pd.DataFrame(columns=["theme", "final_score", "stage_badge", "top1_rs", "strong_count", "base_top", "total_count"])
 
-# 產業統計
+# 產業統計彙整
 all_industries = sorted(df_market["main_industry"].unique().tolist())
 industry_stats = []
 ind_rs_map = {}
@@ -156,7 +200,10 @@ for ind in all_industries:
             "total_count": len(sub_df)
         })
 
-df_industry_ranked = pd.DataFrame(industry_stats).sort_values(by="avg_rs", ascending=False)
+if industry_stats:
+    df_industry_ranked = pd.DataFrame(industry_stats).sort_values(by="avg_rs", ascending=False).reset_index(drop=True)
+else:
+    df_industry_ranked = pd.DataFrame(columns=["industry", "avg_rs", "t1_count", "total_count"])
 
 def assign_stock_badge(row):
     stock_themes = row.get("themes", [])
@@ -178,9 +225,9 @@ def assign_stock_badge(row):
 df_market["共振"] = df_market.apply(assign_stock_badge, axis=1)
 
 # 初始化狀態
-if "selected_theme" not in st.session_state:
+if "selected_theme" not in st.session_state or (not df_theme_ranked.empty and st.session_state.selected_theme not in df_theme_ranked["theme"].values):
     st.session_state.selected_theme = df_theme_ranked["theme"].iloc[0] if not df_theme_ranked.empty else "軍用商規無人機"
-if "selected_industry" not in st.session_state:
+if "selected_industry" not in st.session_state or (not df_industry_ranked.empty and st.session_state.selected_industry not in df_industry_ranked["industry"].values):
     st.session_state.selected_industry = df_industry_ranked["industry"].iloc[0] if not df_industry_ranked.empty else "航太與國防"
 
 # ----------------- 4. 嚴格依資料長度適度配置（前短後長，自然滑動） -----------------
@@ -250,145 +297,152 @@ tab1, tab2, tab3, tab4 = st.tabs([
 # TAB 1: 自適應雙軌題材庫
 # =========================================================
 with tab1:
-    cur_t = st.session_state.selected_theme
-    t_constituents = df_market[df_market["themes"].apply(lambda tags: cur_t in tags)].sort_values(by=["rs_rating", "score"], ascending=[False, False]).copy()
+    if not df_theme_ranked.empty:
+        cur_t = st.session_state.selected_theme
+        t_constituents = df_market[df_market["themes"].apply(lambda tags: cur_t in tags)].sort_values(by=["rs_rating", "score"], ascending=[False, False]).copy()
 
-    cur_t_info = df_theme_ranked[df_theme_ranked["theme"] == cur_t]
-    if not cur_t_info.empty:
-        t_row = cur_t_info.iloc[0]
-        cur_badge = t_row["stage_badge"]
-        cur_score = t_row["final_score"]
-        cur_top1 = t_row["top1_rs"]
-        cur_strong = t_row["strong_count"]
+        cur_t_info = df_theme_ranked[df_theme_ranked["theme"] == cur_t]
+        if not cur_t_info.empty:
+            t_row = cur_t_info.iloc[0]
+            cur_badge = t_row["stage_badge"]
+            cur_score = t_row["final_score"]
+            cur_top1 = t_row["top1_rs"]
+            cur_strong = t_row["strong_count"]
+        else:
+            cur_badge, cur_score, cur_top1, cur_strong = "📦 潛伏盤整", 0.0, 0, 0
+
+        st.markdown(f"### 📋 【{cur_t}】 題材成分股真實動能明細 (依 RS 評分排序)")
+
+        covered_inds = t_constituents["main_industry"].value_counts().to_dict()
+        covered_str = " | ".join([f"{k} ({v}檔)" for k, v in covered_inds.items()])
+
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("當前題材與階段", cur_t, cur_badge)
+        k1.caption(f"橫跨產業: {covered_str}")
+        k2.metric("題材雙軌總分", f"{cur_score} 分")
+        k3.metric("先鋒龍頭 RS", f"{cur_top1} 分")
+        k4.metric("RS ≥ 80 強勢股", f"{cur_strong} / {len(t_constituents)} 檔")
+
+        t_constituents["詳細業務特徵"] = t_constituents["micro_themes"].apply(
+            lambda tags: " | ".join([f"🎯 {t}" if not t.startswith("⭐") and not t.startswith("🎯") and not t.startswith("🚀") and not t.startswith("⚠️") else t for t in tags]) if tags else "—"
+        )
+
+        display_t_df = t_constituents[
+            ["symbol", "name", "close_price", "score", "rs_rating", "共振", "詳細業務特徵"]
+        ].rename(
+            columns={
+                "symbol": "代號",
+                "name": "名稱",
+                "close_price": "收盤價",
+                "score": "綜合動能",
+                "rs_rating": "RS 強勢度",
+                "共振": "共振",
+                "詳細業務特徵": "詳細業務特徵"
+            }
+        )
+
+        st.dataframe(
+            display_t_df,
+            use_container_width=False,
+            hide_index=True,
+            column_config=NATURAL_FIT_CONFIG
+        )
+
+        st.markdown("---")
+
+        t_header_c1, t_header_c2 = st.columns([2, 1])
+        with t_header_c1:
+            st.subheader(f"⚡ 全市場動態題材庫 (共收錄 {len(df_theme_ranked)} 個非重複題材，依雙軌動能排序)")
+        with t_header_c2:
+            theme_search = st.text_input("🔍 過濾題材名稱 (如：散熱、低軌、無人機、半導體):", "").strip()
+
+        filtered_themes_df = df_theme_ranked
+        if theme_search:
+            filtered_themes_df = df_theme_ranked[df_theme_ranked["theme"].str.contains(theme_search, case=False)]
+
+        cols_per_row = 3
+        for row_idx in range(0, len(filtered_themes_df), cols_per_row):
+            cols = st.columns(cols_per_row)
+            for col_idx in range(cols_per_row):
+                idx = row_idx + col_idx
+                if idx < len(filtered_themes_df):
+                    item = filtered_themes_df.iloc[idx]
+                    t_name = item["theme"]
+                    t_score = item["final_score"]
+                    t_badge = item["stage_badge"]
+                    t_strong = item["strong_count"]
+                    t_cnt = item["total_count"]
+                    is_active = "▶ " if t_name == cur_t else ""
+                    btn_label = f"{is_active}{t_badge} {t_name} | {t_score}分 (強勢:{t_strong}/{t_cnt})"
+                    with cols[col_idx]:
+                        if st.button(btn_label, key=f"tab1_p_{t_name}"):
+                            st.session_state.selected_theme = t_name
+                            st.rerun()
     else:
-        cur_badge, cur_score, cur_top1, cur_strong = "📦 潛伏盤整", 0.0, 0, 0
-
-    st.markdown(f"### 📋 【{cur_t}】 題材成分股真實動能明細 (依 RS 評分排序)")
-
-    covered_inds = t_constituents["main_industry"].value_counts().to_dict()
-    covered_str = " | ".join([f"{k} ({v}檔)" for k, v in covered_inds.items()])
-
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("當前題材與階段", cur_t, cur_badge)
-    k1.caption(f"橫跨產業: {covered_str}")
-    k2.metric("題材雙軌總分", f"{cur_score} 分")
-    k3.metric("先鋒龍頭 RS", f"{cur_top1} 分")
-    k4.metric("RS ≥ 80 強勢股", f"{cur_strong} / {len(t_constituents)} 檔")
-
-    t_constituents["詳細業務特徵"] = t_constituents["micro_themes"].apply(
-        lambda tags: " | ".join([f"🎯 {t}" if not t.startswith("⭐") and not t.startswith("🎯") and not t.startswith("🚀") and not t.startswith("⚠️") else t for t in tags]) if tags else "—"
-    )
-
-    display_t_df = t_constituents[
-        ["symbol", "name", "close_price", "score", "rs_rating", "共振", "詳細業務特徵"]
-    ].rename(
-        columns={
-            "symbol": "代號",
-            "name": "名稱",
-            "close_price": "收盤價",
-            "score": "綜合動能",
-            "rs_rating": "RS 強勢度",
-            "共振": "共振",
-            "詳細業務特徵": "詳細業務特徵"
-        }
-    )
-
-    st.dataframe(
-        display_t_df,
-        use_container_width=False,
-        hide_index=True,
-        column_config=NATURAL_FIT_CONFIG
-    )
-
-    st.markdown("---")
-
-    t_header_c1, t_header_c2 = st.columns([2, 1])
-    with t_header_c1:
-        st.subheader(f"⚡ 全市場動態題材庫 (共收錄 {len(df_theme_ranked)} 個非重複題材，依雙軌動能排序)")
-    with t_header_c2:
-        theme_search = st.text_input("🔍 過濾題材名稱 (如：散熱、低軌、無人機、半導體):", "").strip()
-
-    filtered_themes_df = df_theme_ranked
-    if theme_search:
-        filtered_themes_df = df_theme_ranked[df_theme_ranked["theme"].str.contains(theme_search, case=False)]
-
-    cols_per_row = 3
-    for row_idx in range(0, len(filtered_themes_df), cols_per_row):
-        cols = st.columns(cols_per_row)
-        for col_idx in range(cols_per_row):
-            idx = row_idx + col_idx
-            if idx < len(filtered_themes_df):
-                item = filtered_themes_df.iloc[idx]
-                t_name = item["theme"]
-                t_score = item["final_score"]
-                t_badge = item["stage_badge"]
-                t_strong = item["strong_count"]
-                t_cnt = item["total_count"]
-                is_active = "▶ " if t_name == cur_t else ""
-                btn_label = f"{is_active}{t_badge} {t_name} | {t_score}分 (強勢:{t_strong}/{t_cnt})"
-                with cols[col_idx]:
-                    if st.button(btn_label, key=f"tab1_p_{t_name}"):
-                        st.session_state.selected_theme = t_name
-                        st.rerun()
+        st.info("💡 題材資料庫準備中，請先於全市場總榜查看個股。")
 
 # =========================================================
 # TAB 2: 產業視角
 # =========================================================
 with tab2:
-    cur_ind = st.session_state.selected_industry
-    ind_constituents = df_market[df_market["main_industry"] == cur_ind].sort_values(by=["rs_rating", "score"], ascending=[False, False]).copy()
+    if not df_industry_ranked.empty:
+        cur_ind = st.session_state.selected_industry
+        ind_constituents = df_market[df_market["main_industry"] == cur_ind].sort_values(by=["rs_rating", "score"], ascending=[False, False]).copy()
 
-    st.markdown(f"### 📋 【{cur_ind}】 產業成分股明細")
+        st.markdown(f"### 📋 【{cur_ind}】 產業成分股明細")
 
-    i1, i2, i3, i4 = st.columns(4)
-    i1.metric("鎖定產業", cur_ind)
-    i2.metric("產業成分股", f"{len(ind_constituents)} 檔")
-    i3.metric("產業平均 RS", f"{ind_constituents['rs_rating'].mean():.1f}" if not ind_constituents.empty else "0")
-    i4.metric("RS ≥ 90 領袖股", f"{len(ind_constituents[ind_constituents['rs_rating'] >= 90])} 檔")
+        i1, i2, i3, i4 = st.columns(4)
+        i1.metric("鎖定產業", cur_ind)
+        i2.metric("產業成分股", f"{len(ind_constituents)} 檔")
+        i3.metric("產業平均 RS", f"{ind_constituents['rs_rating'].mean():.1f}" if not ind_constituents.empty else "0")
+        i4.metric("RS ≥ 90 領袖股", f"{len(ind_constituents[ind_constituents['rs_rating'] >= 90])} 檔")
 
-    ind_constituents["詳細業務特徵"] = ind_constituents["micro_themes"].apply(
-        lambda tags: " | ".join([f"🎯 {t}" if not t.startswith("⭐") and not t.startswith("🎯") and not t.startswith("🚀") and not t.startswith("⚠️") else t for t in tags]) if tags else "—"
-    )
+        ind_constituents["詳細業務特徵"] = ind_constituents["micro_themes"].apply(
+            lambda tags: " | ".join([f"🎯 {t}" if not t.startswith("⭐") and not t.startswith("🎯") and not t.startswith("🚀") and not t.startswith("⚠️") else t for t in tags]) if tags else "—"
+        )
 
-    display_ind_df = ind_constituents[
-        ["symbol", "name", "close_price", "score", "rs_rating", "共振", "詳細業務特徵"]
-    ].rename(
-        columns={
-            "symbol": "代號",
-            "name": "名稱",
-            "close_price": "收盤價",
-            "score": "綜合動能",
-            "rs_rating": "RS 強勢度",
-            "共振": "共振",
-            "詳細業務特徵": "詳細業務特徵"
-        }
-    )
+        display_ind_df = ind_constituents[
+            ["symbol", "name", "close_price", "score", "rs_rating", "共振", "詳細業務特徵"]
+        ].rename(
+            columns={
+                "symbol": "代號",
+                "name": "名稱",
+                "close_price": "收盤價",
+                "score": "綜合動能",
+                "rs_rating": "RS 強勢度",
+                "共振": "共振",
+                "詳細業務特徵": "詳細業務特徵"
+            }
+        )
 
-    st.dataframe(
-        display_ind_df,
-        use_container_width=False,
-        hide_index=True,
-        column_config=NATURAL_FIT_CONFIG
-    )
+        st.dataframe(
+            display_ind_df,
+            use_container_width=False,
+            hide_index=True,
+            column_config=NATURAL_FIT_CONFIG
+        )
 
-    st.markdown("---")
-    st.subheader("🏭 快速切換法定產業 (依產業輪動強弱排序)")
-    for row_idx in range(0, len(df_industry_ranked), cols_per_row):
-        cols = st.columns(cols_per_row)
-        for col_idx in range(cols_per_row):
-            idx = row_idx + col_idx
-            if idx < len(df_industry_ranked):
-                item = df_industry_ranked.iloc[idx]
-                i_name = item["industry"]
-                i_avg = item["avg_rs"]
-                i_cnt = item["total_count"]
-                icon = "🔥" if i_avg >= 80 else ("⚡" if i_avg >= 60 else "📦")
-                is_active = "▶ " if i_name == cur_ind else ""
-                btn_label = f"{is_active}{icon} {i_name} | {i_avg:.1f} ({i_cnt}檔)"
-                with cols[col_idx]:
-                    if st.button(btn_label, key=f"tab2_p_{i_name}"):
-                        st.session_state.selected_industry = i_name
-                        st.rerun()
+        st.markdown("---")
+        st.subheader("🏭 快速切換法定產業 (依產業輪動強弱排序)")
+        cols_per_row = 3
+        for row_idx in range(0, len(df_industry_ranked), cols_per_row):
+            cols = st.columns(cols_per_row)
+            for col_idx in range(cols_per_row):
+                idx = row_idx + col_idx
+                if idx < len(df_industry_ranked):
+                    item = df_industry_ranked.iloc[idx]
+                    i_name = item["industry"]
+                    i_avg = item["avg_rs"]
+                    i_cnt = item["total_count"]
+                    icon = "🔥" if i_avg >= 80 else ("⚡" if i_avg >= 60 else "📦")
+                    is_active = "▶ " if i_name == cur_ind else ""
+                    btn_label = f"{is_active}{icon} {i_name} | {i_avg:.1f} ({i_cnt}檔)"
+                    with cols[col_idx]:
+                        if st.button(btn_label, key=f"tab2_p_{i_name}"):
+                            st.session_state.selected_industry = i_name
+                            st.rerun()
+    else:
+        st.info("💡 產業資料庫準備中。")
 
 # =========================================================
 # TAB 3: 主流領袖專區 (先鋒突圍 + 集團共振)
@@ -430,55 +484,4 @@ with tab3:
         column_config=NATURAL_FIT_CONFIG
     )
 
-# =========================================================
-# TAB 4: 全市場真實 RS 排行榜
-# =========================================================
-with tab4:
-    st.subheader("🏆 全市場真實 RS 動能綜合排行榜")
-    
-    with st.expander("⚙️ 篩選條件 (RS 門檻、市場、產業)", expanded=True):
-        fc1, fc2, fc3 = st.columns(3)
-        with fc1:
-            rs_min_val = st.slider("最低 RS Rating 門檻", 1, 99, 80, key="all_rs_slider")
-        with fc2:
-            market_types = st.multiselect("上市 / 上櫃", ["上市", "上櫃"], default=["上市", "上櫃"], key="all_market_types")
-        with fc3:
-            main_ind_filter = st.selectbox("主產業篩選", ["全部"] + all_industries, key="all_main_filter")
-
-    all_filtered = df_market[
-        (df_market["rs_rating"] >= rs_min_val) &
-        (df_market["market"].isin(market_types))
-    ].copy()
-
-    if main_ind_filter != "全部":
-        all_filtered = all_filtered[all_filtered["main_industry"] == main_ind_filter]
-
-    k1, k2, k3 = st.columns(3)
-    k1.metric("符合條件檔數", f"{len(all_filtered)} 檔")
-    k2.metric("平均 RS 評分", f"{all_filtered['rs_rating'].mean():.1f}" if not all_filtered.empty else "0")
-    k3.metric("RS ≥ 90 領袖股檔數", f"{len(all_filtered[all_filtered['rs_rating'] >= 90])} 檔")
-
-    all_filtered["詳細業務特徵"] = all_filtered["micro_themes"].apply(
-        lambda tags: " | ".join([f"🎯 {t}" if not t.startswith("⭐") and not t.startswith("🎯") and not t.startswith("🚀") and not t.startswith("⚠️") else t for t in tags]) if tags else "—"
-    )
-    
-    view_all_df = all_filtered.sort_values(by=["rs_rating", "score"], ascending=[False, False])[
-        ["symbol", "name", "close_price", "score", "rs_rating", "共振", "詳細業務特徵"]
-    ].rename(
-        columns={
-            "symbol": "代號",
-            "name": "名稱",
-            "close_price": "收盤價",
-            "score": "綜合動能",
-            "rs_rating": "RS 強勢度",
-            "共振": "共振",
-            "詳細業務特徵": "詳細業務特徵"
-        }
-    )
-
-    st.dataframe(
-        view_all_df,
-        use_container_width=False,
-        hide_index=True,
-        column_config=NATURAL_FIT_CONFIG
-    )
+# ================================================
