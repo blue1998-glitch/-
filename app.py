@@ -528,7 +528,7 @@ market_rankings, db_status = load_market_data()
 
 st.title("🚀 台股動能 RS 領袖排行與風控儀表板")
 
-with st.expander("🛡️ 系統五大自動化量化風控與 RS_ratio（60日中軸/20日動能）說明", expaanded=False):
+with st.expander("🛡️ 系統五大自動化量化風控與 RS_ratio（60日中軸/20日動能）說明", expanded=False):
     st.markdown("**RS_ratio 雙軸指標**：以 60 日季線為強弱中軸（≥100 為 🔥[強勢]，<100 為 ❄️[弱勢]）；以 20 日 SMA 為短線動能加速度。")
     r1, r2 = st.columns(2)
     with r1:
