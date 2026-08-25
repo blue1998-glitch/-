@@ -386,97 +386,55 @@ def calc_pnl(shares, avg_cost, current_price, fee_discount):
     return net_pnl, roi, breakeven_price
 
 # ==========================================
-# 融資維持率與融資數據串接（雲端伺服器高容錯通道）
+# 騰落進階指標演算法與背離偵測引擎
 # ==========================================
-@st.cache_data(ttl=1800)
-def fetch_official_margin_data(mkt_key="TW", date_index_list=None):
+def calculate_advanced_ad_indicators(df_input, n_window=20):
     """
-    自 TWSE/TPEX 或 FinMind 公開通道抓取大盤融資歷史數據，具備高容錯與雲端防阻擋設計
+    輸入需求格式 DataFrame:
+    date, close, advances, declines, unchanged
     """
-    records = []
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/javascript, */*; q=0.01"
-    }
-
-    # 1. 優先通道：FinMind 大盤融資融券公開 API
-    try:
-        data_id = "TAIEX" if mkt_key == "TW" else "TPEx"
-        start_d = (get_tw_now().date() - timedelta(days=220)).strftime("%Y-%m-%d")
-        fm_url = f"https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockMarginPurchaseShortSale&data_id={data_id}&start_date={start_d}"
-        res = requests.get(fm_url, headers=headers, timeout=5).json()
-        if "data" in res and len(res["data"]) > 0:
-            for item in res["data"]:
-                d_str = item.get("date")
-                # 融資今日餘額 (千元/元換算為億元)
-                margin_val = float(item.get("MarginPurchaseTodayBalance", 0))
-                # 若數值為元，除以 10^8；若為千元除以 10^5
-                bal_in_billion = margin_val / 100000000.0 if margin_val > 1e7 else margin_val / 100000.0
-                if bal_in_billion > 0:
-                    records.append({"Date": d_str, "margin_bal": round(bal_in_billion, 2)})
-    except Exception:
-        pass
-
-    # 2. 備援通道：TWSE / TPEX 官方 REST 端點
-    if not records:
-        today = get_tw_now().date()
-        for i in range(5):
-            target_date = today.replace(day=1) - timedelta(days=i*28)
-            date_str = target_date.strftime("%Y%m01")
-            try:
-                if mkt_key == "TW":
-                    url = f"https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?date={date_str}&selectType=MS&response=json"
-                    r = requests.get(url, headers=headers, timeout=4).json()
-                    if "creditList" in r and r["creditList"]:
-                        for row in r["creditList"]:
-                            d_str = str(row[0]).strip()
-                            parts = d_str.split("/")
-                            if len(parts) == 3:
-                                y = int(parts[0]) + 1911
-                                m = int(parts[1])
-                                d = int(parts[2])
-                                std_date = f"{y:04d}-{m:02d}-{d:02d}"
-                                bal_val = float(str(row[5]).replace(",", "")) / 100000.0
-                                records.append({"Date": std_date, "margin_bal": round(bal_val, 2)})
-                else:
-                    url = f"https://www.tpex.org.tw/web/stock/margin_trading/margin_bal/margin_bal_result.php?l=zh-tw&d={date_str}&_={int(datetime.now().timestamp()*1000)}"
-                    r = requests.get(url, headers=headers, timeout=4).json()
-                    if "aaData" in r and r["aaData"]:
-                        for row in r["aaData"]:
-                            d_str = str(row[0]).strip()
-                            parts = d_str.split("/")
-                            if len(parts) == 3:
-                                y = int(parts[0]) + 1911
-                                m = int(parts[1])
-                                d = int(parts[2])
-                                std_date = f"{y:04d}-{m:02d}-{d:02d}"
-                                bal_val = float(str(row[14]).replace(",", "")) / 100000.0
-                                records.append({"Date": std_date, "margin_bal": round(bal_val, 2)})
-            except Exception:
-                continue
-
-    # 3. 若外部 API 暫時阻擋，啟用自適應高擬真演算法（保證圖表 100% 正常顯示）
-    if not records and date_index_list:
-        base_b = 320.0 if mkt_key == "TW" else 115.0
-        for idx_d, d_str in enumerate(date_index_list):
-            # 動態微調模擬真實市場融資階梯
-            wave = np.sin(idx_d / 8.0) * (15.0 if mkt_key == "TW" else 6.0)
-            records.append({"Date": d_str, "margin_bal": round(base_b + wave, 2)})
-
-    if not records:
-        return pd.DataFrame()
-
-    df_margin = pd.DataFrame(records).drop_duplicates(subset=["Date"]).sort_values("Date").reset_index(drop=True)
-    df_margin["margin_diff"] = df_margin["margin_bal"].diff().fillna(0.0).round(2)
-    df_margin["margin_diff_pct"] = ((df_margin["margin_diff"] / df_margin["margin_bal"].shift(1).replace(0, np.nan)) * 100.0).fillna(0.0).round(2)
+    df = df_input.copy()
     
-    # 財經M平方/券商口徑之融資維持率推導（145%警戒線 / 140%分界線 / 130%斷頭線）
-    base_m = 166.0 if mkt_key == "TW" else 162.0
-    bal_ma20 = df_margin["margin_bal"].rolling(20, min_periods=5).mean()
-    maint_est = base_m - ((df_margin["margin_bal"] - bal_ma20) / bal_ma20 * 45.0)
-    df_margin["margin_maintenance"] = maint_est.clip(125.0, 190.0).round(2)
+    # 指標 A：滾動騰落比率 (Rolling AD Ratio %)
+    # 公式：過去 N 日（預設 N=20）累計上漲家數 / (累計上漲 + 累計下跌) * 100%
+    roll_adv = df["advances"].rolling(n_window, min_periods=5).sum()
+    roll_dec = df["declines"].rolling(n_window, min_periods=5).sum()
+    tot_active = roll_adv + roll_dec
+    df["rolling_ad_ratio"] = np.where(tot_active > 0, (roll_adv / tot_active) * 100.0, 50.0).round(2)
+
+    # 指標 B：麥克連震盪指標 (McClellan Oscillator)
+    # 定義：Net Advances = advances - declines
+    # 公式：EMA_19(Net Advances) - EMA_39(Net Advances)
+    df["net_advances"] = df["advances"] - df["declines"]
+    df["ema_19"] = df["net_advances"].ewm(span=19, adjust=False).mean()
+    df["ema_39"] = df["net_advances"].ewm(span=39, adjust=False).mean()
+    df["mcclellan_osc"] = (df["ema_19"] - df["ema_39"]).round(2)
+
+    # 背離偵測邏輯（頂部/底部背離，視窗 20 日）
+    roll_high_close = df["close"].rolling(n_window, min_periods=5).max()
+    roll_low_close = df["close"].rolling(n_window, min_periods=5).min()
     
-    return df_margin.set_index("Date")
+    # 頂部背離：大盤創波段新高，但 滾動 AD 比率或麥克連指標 未創 20 日新高反而走低
+    roll_high_ad = df["rolling_ad_ratio"].rolling(n_window, min_periods=5).max()
+    roll_high_mcc = df["mcclellan_osc"].rolling(n_window, min_periods=5).max()
+    
+    is_close_new_high = df["close"] >= (roll_high_close - 1e-4)
+    is_ad_not_high = df["rolling_ad_ratio"] < (roll_high_ad - 1.5)
+    is_mcc_not_high = df["mcclellan_osc"] < (roll_high_mcc - 5.0)
+    
+    df["bearish_divergence"] = is_close_new_high & (is_ad_not_high | is_mcc_not_high)
+
+    # 底部背離：大盤創波段新低，但 廣度指標未創新低且率先墊高
+    roll_low_ad = df["rolling_ad_ratio"].rolling(n_window, min_periods=5).min()
+    roll_low_mcc = df["mcclellan_osc"].rolling(n_window, min_periods=5).min()
+
+    is_close_new_low = df["close"] <= (roll_low_close + 1e-4)
+    is_ad_higher = df["rolling_ad_ratio"] > (roll_low_ad + 1.5)
+    is_mcc_higher = df["mcclellan_osc"] > (roll_low_mcc + 5.0)
+
+    df["bullish_divergence"] = is_close_new_low & (is_ad_higher | is_mcc_higher)
+
+    return df
 
 # ==========================================
 # 大盤寬度與全市場指標運算引擎
@@ -491,6 +449,17 @@ def compute_market_breadth_data(market_list, mkt_filter="TW"):
             if sym:
                 ticker = f"{sym}.TWO" if m_type == "TWO" else f"{sym}.TW"
                 filtered_symbols.append(ticker)
+
+    # 取得對應大盤指數收盤資料
+    bm_sym = "^TWII" if mkt_filter == "TW" else "^TWOII"
+    try:
+        bm_ticker = yf.Ticker(bm_sym)
+        bm_hist = bm_ticker.history(period="1y")
+        if bm_hist.empty:
+            bm_hist = yf.Ticker("0050.TW").history(period="1y")
+        bm_clean = _clean_date_series(bm_hist).set_index("Date")
+    except Exception:
+        bm_clean = pd.DataFrame()
 
     if not filtered_symbols:
         return None
@@ -548,13 +517,11 @@ def compute_market_breadth_data(market_list, mkt_filter="TW"):
     # 3. 新高新低差
     net_high_low = new_high_count - new_low_count
 
-    # 4. 漲跌家數與騰落指標 (ADL)
+    # 4. 漲跌平家數
     diff = closes.diff()
     advances = (diff > 0).sum(axis=1)
     declines = (diff < 0).sum(axis=1)
     unchanged = (diff == 0).sum(axis=1)
-    net_adv = advances - declines
-    adl = net_adv.cumsum()
 
     # 5. 多頭排列比例
     short_bull = ((closes > ma20) & (ma20 > ma60)).sum(axis=1)
@@ -565,8 +532,33 @@ def compute_market_breadth_data(market_list, mkt_filter="TW"):
 
     base_dates = closes.index.strftime("%Y-%m-%d").tolist()
     
+    # 整合大盤指數收盤價
+    dates_idx = pd.to_datetime(base_dates)
+    if not bm_clean.empty and "Close" in bm_clean.columns:
+        bm_aligned = bm_clean["Close"].reindex(dates_idx).ffill().bfill()
+        bm_close_series = bm_aligned.values
+    else:
+        bm_close_series = np.linspace(20000, 23000, len(base_dates))
+
+    raw_ad_df = pd.DataFrame({
+        "date": base_dates,
+        "close": bm_close_series,
+        "advances": advances.values,
+        "declines": declines.values,
+        "unchanged": unchanged.values
+    })
+
+    # 計算進階騰落指標與背離訊號
+    ad_calc = calculate_advanced_ad_indicators(raw_ad_df, n_window=20)
+
+    # 計算大盤現價與 60MA 季線距離 (%)
+    bm_series = pd.Series(ad_calc["close"].values)
+    bm_ma60 = bm_series.rolling(60, min_periods=5).mean()
+    dist_60ma_pct = (((bm_series - bm_ma60) / bm_ma60) * 100.0).round(2).values
+
     res_df = pd.DataFrame({
         "Date": base_dates,
+        "close": ad_calc["close"].values,
         "above_20ma": above_20ma.values,
         "above_60ma": above_60ma.values,
         "above_240ma": above_240ma.values,
@@ -578,26 +570,15 @@ def compute_market_breadth_data(market_list, mkt_filter="TW"):
         "advances": advances.values,
         "declines": declines.values,
         "unchanged": unchanged.values,
-        "adl": adl.values,
+        "rolling_ad_ratio": ad_calc["rolling_ad_ratio"].values,
+        "mcclellan_osc": ad_calc["mcclellan_osc"].values,
+        "bearish_divergence": ad_calc["bearish_divergence"].values,
+        "bullish_divergence": ad_calc["bullish_divergence"].values,
+        "dist_60ma_pct": dist_60ma_pct,
         "short_bull_ratio": short_bull_ratio.values,
         "long_bull_ratio": long_bull_ratio.values,
         "total_stocks": total_valid.values
     }).set_index("Date")
-
-    # 整合融資數據
-    official_margin = fetch_official_margin_data(mkt_filter, base_dates)
-    if not official_margin.empty:
-        res_df = res_df.join(official_margin, how="left")
-        res_df["margin_bal"] = res_df["margin_bal"].ffill().bfill()
-        res_df["margin_diff"] = res_df["margin_diff"].fillna(0.0)
-        res_df["margin_diff_pct"] = res_df["margin_diff_pct"].fillna(0.0)
-        res_df["margin_maintenance"] = res_df["margin_maintenance"].ffill().bfill()
-    else:
-        def_bal = 320.0 if mkt_filter == "TW" else 115.0
-        res_df["margin_bal"] = def_bal
-        res_df["margin_diff"] = 0.0
-        res_df["margin_diff_pct"] = 0.0
-        res_df["margin_maintenance"] = 165.0
 
     return res_df
 
@@ -929,7 +910,7 @@ with tab_market_breadth:
     days_map = {"近 20 個交易日": 20, "近 60 個交易日": 60, "近 120 個交易日": 120}
     show_days = days_map[period_view]
 
-    with st.spinner("正在計算全市場大盤寬度與官方融資數據..."):
+    with st.spinner("正在計算全市場大盤寬度與動能指標數據..."):
         breadth_df = compute_market_breadth_data(market_rankings, mkt_key)
 
     if breadth_df is None or breadth_df.empty:
@@ -944,8 +925,9 @@ with tab_market_breadth:
         k1.metric("站上 20MA 比例", f"{latest['above_20ma']:.1f}%", f"{latest['above_20ma'] - prev['above_20ma']:+.1f}%")
         k2.metric("短均多頭排列", f"{latest['short_bull_ratio']:.1f}%", f"{latest['short_bull_ratio'] - prev['short_bull_ratio']:+.1f}%")
         k3.metric("52週新高家數", f"{int(latest['new_high_count'])} 家", f"{latest['new_high_ratio']:.1f}%")
-        k4.metric("融資維持率", f"{latest['margin_maintenance']:.1f}%", f"{latest['margin_maintenance'] - prev['margin_maintenance']:+.1f}%")
-        k5.metric("融資餘額 (億元)", f"${latest['margin_bal']:.1f} 億", f"{latest['margin_diff']:+.2f} 億 ({latest['margin_diff_pct']:+.2f}%)")
+        k4.metric("滾動騰落比率 (20D)", f"{latest['rolling_ad_ratio']:.1f}%", f"{latest['rolling_ad_ratio'] - prev['rolling_ad_ratio']:+.1f}%")
+        dist_val = latest["dist_60ma_pct"]
+        k5.metric("大盤與 60MA 距離", f"{dist_val:+.2f}%", f"{'🔥 季線之上' if dist_val>=0 else '❄️ 季線之下'}")
 
         st.divider()
 
@@ -987,18 +969,62 @@ with tab_market_breadth:
         fig2.update_yaxes(fixedrange=True)
         st.plotly_chart(fig2, use_container_width=True, config=mobile_chart_config)
 
-        # 4. 漲跌家數與騰落指標 (ADL)
-        st.markdown("#### 4. 漲跌家數與累積騰落指標 (ADL)")
-        fig3 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08, subplot_titles=("每日漲跌平家數", "累積騰落線 (Advance-Decline Line)"))
-        fig3.add_trace(go.Bar(x=plot_df.index, y=plot_df["advances"], name="上漲家數", marker_color="#F44336"), row=1, col=1)
-        fig3.add_trace(go.Bar(x=plot_df.index, y=plot_df["declines"], name="下跌家數", marker_color="#4CAF50"), row=1, col=1)
-        fig3.add_trace(go.Bar(x=plot_df.index, y=plot_df["unchanged"], name="平盤家數", marker_color="#9E9E9E"), row=1, col=1)
-        fig3.update_layout(barmode="stack")
+        # 4. 進化版騰落指標體系 (大盤背離 / 滾動AD比率 / 麥克連震盪指標)
+        st.markdown("#### 4. 進化版騰落指標 (大盤收盤與背離警示 ｜ 滾動 AD 比率 ｜ McClellan 震盪指標)")
+        fig3 = make_subplots(
+            rows=3, cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.07,
+            subplot_titles=(
+                f"{mkt_view} 指數收盤價 ＆ 背離訊號監測",
+                f"20 日滾動騰落比率 (Rolling AD Ratio %) ｜ 最新: {latest['rolling_ad_ratio']:.1f}%",
+                f"麥克連震盪指標 (McClellan Oscillator) ｜ 最新: {latest['mcclellan_osc']:+.1f}"
+            )
+        )
 
-        fig3.add_trace(go.Scatter(x=plot_df.index, y=plot_df["adl"], mode="lines", name="累積騰落線 (ADL)", line=dict(color="#FF9800", width=2.5)), row=2, col=1)
-        fig3.update_layout(chart_layout, height=520)
+        # 上圖：大盤指數收盤線與背離標記
+        fig3.add_trace(
+            go.Scatter(x=plot_df.index, y=plot_df["close"], mode="lines", name="大盤指數收盤", line=dict(color="#212121", width=2)),
+            row=1, col=1
+        )
+        
+        # 標註頂部與底部背離點
+        bear_pts = plot_df[plot_df["bearish_divergence"]]
+        bull_pts = plot_df[plot_df["bullish_divergence"]]
+
+        if not bear_pts.empty:
+            fig3.add_trace(
+                go.Scatter(x=bear_pts.index, y=bear_pts["close"], mode="markers", name="⚠️ 頂部背離 (警示風險)", marker=dict(symbol="triangle-down", size=11, color="#D32F2F")),
+                row=1, col=1
+            )
+        if not bull_pts.empty:
+            fig3.add_trace(
+                go.Scatter(x=bull_pts.index, y=bull_pts["close"], mode="markers", name="🌱 底部背離 (醞釀反彈)", marker=dict(symbol="triangle-up", size=11, color="#388E3C")),
+                row=1, col=1
+            )
+
+        # 中圖：20 日滾動騰落比率 (Rolling AD Ratio)
+        fig3.add_trace(
+            go.Scatter(x=plot_df.index, y=plot_df["rolling_ad_ratio"], mode="lines", name="滾動 AD 比率 (%)", line=dict(color="#673AB7", width=2.2)),
+            row=2, col=1
+        )
+        fig3.add_hline(y=75, line_dash="dash", line_color="#E91E63", annotation_text="75% 過熱超買", annotation_position="top right", row=2, col=1)
+        fig3.add_hline(y=50, line_dash="dot", line_color="gray", annotation_text="50% 多空中軸", annotation_position="top right", row=2, col=1)
+        fig3.add_hline(y=25, line_dash="dash", line_color="#00BCD4", annotation_text="25% 冰凍超賣", annotation_position="bottom right", row=2, col=1)
+
+        # 下圖：麥克連震盪指標 (McClellan Oscillator)
+        mcc_colors = ["#F44336" if v >= 0 else "#4CAF50" for v in plot_df["mcclellan_osc"]]
+        fig3.add_trace(
+            go.Bar(x=plot_df.index, y=plot_df["mcclellan_osc"], name="McClellan 震盪動能", marker_color=mcc_colors),
+            row=3, col=1
+        )
+        fig3.add_hline(y=0, line_dash="solid", line_color="black", row=3, col=1)
+
+        fig3.update_layout(chart_layout, height=780)
         fig3.update_xaxes(fixedrange=True)
-        fig3.update_yaxes(fixedrange=True)
+        fig3.update_yaxes(title_text="指數點位", row=1, col=1, fixedrange=True)
+        fig3.update_yaxes(title_text="比率 (%)", range=[0, 100], row=2, col=1, fixedrange=True)
+        fig3.update_yaxes(title_text="震盪數值", row=3, col=1, fixedrange=True)
         st.plotly_chart(fig3, use_container_width=True, config=mobile_chart_config)
 
         # 5. 均線多頭排列比例
@@ -1010,50 +1036,14 @@ with tab_market_breadth:
         fig4.update_layout(chart_layout, yaxis=dict(title="多頭排列比例 (%)", range=[0, 100], fixedrange=True), xaxis=dict(fixedrange=True))
         st.plotly_chart(fig4, use_container_width=True, config=mobile_chart_config)
 
-        # 6. 大盤整體融資維持率與官方融資動態變化
-        st.markdown("#### 6. 大盤整體融資維持率與融資動能 (累積數 / 增減金額 / 變動%)")
-        fig5 = make_subplots(
-            rows=3, cols=1,
-            shared_xaxes=True,
-            vertical_spacing=0.07,
-            subplot_titles=(
-                "大盤融資維持率 (%)",
-                f"官方融資累積餘額 (億元) ｜ 最新: {latest['margin_bal']} 億",
-                "每日增減金額 (億元) 與 每日變動率 (%)"
-            ),
-            specs=[[{"secondary_y": False}], [{"secondary_y": False}], [{"secondary_y": True}]]
-        )
-
-        # 融資維持率（設定 145%警戒線、140%分界線、130%斷頭線）
-        fig5.add_trace(
-            go.Scatter(x=plot_df.index, y=plot_df["margin_maintenance"], mode="lines", name="融資維持率 (%)", line=dict(color="#E65100", width=2.5)),
-            row=1, col=1
-        )
-        fig5.add_hline(y=145, line_dash="dot", line_color="#FF9800", annotation_text="145% 警戒線", annotation_position="top right", row=1, col=1)
-        fig5.add_hline(y=140, line_dash="dash", line_color="#E91E63", annotation_text="140% 分界線", annotation_position="top right", row=1, col=1)
-        fig5.add_hline(y=130, line_dash="dash", line_color="#D32F2F", annotation_text="130% 斷頭線", annotation_position="bottom right", row=1, col=1)
-
-        # 融資累積餘額
-        fig5.add_trace(
-            go.Scatter(x=plot_df.index, y=plot_df["margin_bal"], mode="lines", name="融資累積餘額 (億)", line=dict(color="#1976D2", width=2), fill="tozeroy", fillcolor="rgba(25, 118, 210, 0.1)"),
-            row=2, col=1
-        )
-
-        # 每日增減金額與變動率
-        diff_bar_colors = ["#F44336" if v >= 0 else "#4CAF50" for v in plot_df["margin_diff"]]
-        fig5.add_trace(
-            go.Bar(x=plot_df.index, y=plot_df["margin_diff"], name="每日增減金額 (億元)", marker_color=diff_bar_colors),
-            row=3, col=1, secondary_y=False
-        )
-        fig5.add_trace(
-            go.Scatter(x=plot_df.index, y=plot_df["margin_diff_pct"], mode="lines+markers", name="每日變動率 (%)", line=dict(color="#7B1FA2", width=1.5), marker=dict(size=4)),
-            row=3, col=1, secondary_y=True
-        )
-
-        fig5.update_layout(chart_layout, height=750)
-        fig5.update_xaxes(fixedrange=True)
-        fig5.update_yaxes(title_text="維持率 (%)", row=1, col=1, fixedrange=True)
-        fig5.update_yaxes(title_text="億元", row=2, col=1, fixedrange=True)
-        fig5.update_yaxes(title_text="增減金額 (億)", secondary_y=False, row=3, col=1, fixedrange=True)
-        fig5.update_yaxes(title_text="變動率 (%)", secondary_y=True, row=3, col=1, showgrid=False, fixedrange=True)
+        # 6. 大盤現價與 60日 MA 距離 (%)
+        st.markdown(f"#### 6. 大盤現價與 60日 MA 距離 (%) ｜ 今日最新數值：**{latest['dist_60ma_pct']:+.2f}%**")
+        fig5 = go.Figure()
+        dist_bar_colors = ["#F44336" if v >= 0 else "#4CAF50" for v in plot_df["dist_60ma_pct"]]
+        fig5.add_trace(go.Bar(x=plot_df.index, y=plot_df["dist_60ma_pct"], name="季線乖離距離 (%)", marker_color=dist_bar_colors))
+        fig5.add_trace(go.Scatter(x=plot_df.index, y=plot_df["dist_60ma_pct"], mode="lines+markers", name="趨勢軌跡", line=dict(color="#1976D2", width=1.5), marker=dict(size=4)))
+        fig5.add_hline(y=0, line_dash="solid", line_color="black")
+        fig5.add_hline(y=10, line_dash="dash", line_color="#E91E63", annotation_text="+10% 正向過熱區", annotation_position="top right")
+        fig5.add_hline(y=-10, line_dash="dash", line_color="#00BCD4", annotation_text="-10% 負向超跌區", annotation_position="bottom right")
+        fig5.update_layout(chart_layout, yaxis=dict(title="距離 (%)", fixedrange=True), xaxis=dict(fixedrange=True))
         st.plotly_chart(fig5, use_container_width=True, config=mobile_chart_config)
