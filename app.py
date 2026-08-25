@@ -26,8 +26,6 @@ def fetch_and_calculate_market_breadth(market_type="TWSE"):
     抓取並計算全市場大盤指標 (上市 TWSE / 上櫃 TPEx)
     以 240 個交易日作為 52 週基準
     """
-    # 判斷是上市 (.TW) 還是上櫃 (.TWO)
-    # 內建台股全市場常用個股清單或優先讀取本地已計算好的緩存檔案
     cache_file = f"market_breadth_{market_type.lower()}.parquet"
     if os.path.exists(cache_file):
         try:
@@ -35,12 +33,9 @@ def fetch_and_calculate_market_breadth(market_type="TWSE"):
         except Exception:
             pass
 
-    # 若無本地快取，嘗試從 yfinance 批次取得市場代表性全個股歷史價格
-    # 預設抓取大盤指數與全市場股價矩陣
     benchmark_symbol = "^TWII" if market_type == "TWSE" else "^TWOII"
     suffix = ".TW" if market_type == "TWSE" else ".TWO"
 
-    # 若要全市場計算，可擴充代碼清單
     try:
         # 下載大盤基準指數 (用於對照)
         idx_df = yf.download(benchmark_symbol, period="2y", progress=False)
@@ -49,7 +44,7 @@ def fetch_and_calculate_market_breadth(market_type="TWSE"):
         else:
             idx_close = idx_df["Close"]
         
-        # 讀取現有 rank 資料庫或本地歷史價格
+        # 讀取現有 rank 資料庫或本地代碼清單
         if os.path.exists("market_rankings.json"):
             with open("market_rankings.json", "r", encoding="utf-8") as f:
                 rank_data = json.load(f)
@@ -58,9 +53,11 @@ def fetch_and_calculate_market_breadth(market_type="TWSE"):
             tickers = []
 
         if not tickers:
-            # 示範/預設核心股票池
-            base_tickers = ["2330", "2317", "2454", "2382", "2308", "2881", "2882", "2412", "3008", "2303", 
-                            "3441", "6182", "8112", "3577", "6907", "6285", "3037", "3017", "2603", "2408"]
+            # 預設核心股票池
+            base_tickers = [
+                "2330", "2317", "2454", "2382", "2308", "2881", "2882", "2412", "3008", "2303", 
+                "3441", "6182", "8112", "3577", "6907", "6285", "3037", "3017", "2603", "2408"
+            ]
             tickers = [t + suffix for t in base_tickers]
 
         # 批次下載價格矩陣 (收盤價)
@@ -72,7 +69,7 @@ def fetch_and_calculate_market_breadth(market_type="TWSE"):
             
         df_prices = df_prices.dropna(how="all").ffill()
     except Exception:
-        # 網路異常或代碼抓取受阻時的防崩潰保護機制 (模擬歷史數據)
+        # 網路異常或代碼抓取受阻時的防崩潰保護機制 (平滑模擬數據)
         dates = pd.date_range(end=pd.Timestamp.today(), periods=350, freq="B")
         np.random.seed(42 if market_type == "TWSE" else 100)
         df_prices = pd.DataFrame(
@@ -86,11 +83,11 @@ def fetch_and_calculate_market_breadth(market_type="TWSE"):
     valid_counts = df_prices.notna().sum(axis=1)
 
     # 1. 均線覆蓋率 (20MA, 60MA, 240MA)
+    ma5 = df_prices.rolling(5).mean()
+    ma10 = df_prices.rolling(10).mean()
     ma20 = df_prices.rolling(20).mean()
     ma60 = df_prices.rolling(60).mean()
     ma240 = df_prices.rolling(240).mean()
-    ma5 = df_prices.rolling(5).mean()
-    ma10 = df_prices.rolling(10).mean()
 
     above_20ma_pct = ((df_prices > ma20).sum(axis=1) / valid_counts) * 100
     above_60ma_pct = ((df_prices > ma60).sum(axis=1) / valid_counts) * 100
@@ -103,6 +100,7 @@ def fetch_and_calculate_market_breadth(market_type="TWSE"):
     new_highs = (df_prices >= rolling_240_max).sum(axis=1)
     new_lows = (df_prices <= rolling_240_min).sum(axis=1)
     new_high_pct = (new_highs / valid_counts) * 100
+    new_low_pct = (new_lows / valid_counts) * 100
     net_new_highs = new_highs - new_lows
 
     # 4. 每日漲跌家數與累積騰落線 (ADL)
@@ -125,6 +123,7 @@ def fetch_and_calculate_market_breadth(market_type="TWSE"):
         "new_highs": new_highs,
         "new_lows": new_lows,
         "new_high_pct": new_high_pct,
+        "new_low_pct": new_low_pct,
         "net_new_highs": net_new_highs,
         "advances": advances,
         "declines": declines,
@@ -138,13 +137,13 @@ def fetch_and_calculate_market_breadth(market_type="TWSE"):
 
 
 # -------------------------------------------------------------
-# 3. 頁籤一：全新大盤寬度指標分頁 (Market Breadth View)
+# 3. 頁籤一：大盤寬度指標分頁 (Market Breadth View)
 # -------------------------------------------------------------
 def render_market_breadth_tab():
     st.markdown("### 📊 台股全市場大盤指標與市場寬度")
 
-    # 頂部控制列
-    col_sel1, col_sel2 = st.columns()
+    # 頂部控制列 (修正 columns 參數)
+    col_sel1, col_sel2 = st.columns(2)
     with col_sel1:
         market_mode = st.radio("🏢 市場別切換", ["上市 (TWSE)", "上櫃 (TPEx)"], horizontal=True)
     with col_sel2:
@@ -232,7 +231,6 @@ def render_market_breadth_tab():
     fig2.add_trace(go.Scatter(x=df.index, y=df["new_lows"], name="52W 創新低家數", line=dict(color="#2EC4B6", width=2)), row=1, col=1, secondary_y=False)
     fig2.add_trace(go.Scatter(x=df.index, y=df["new_high_pct"], name="創新高比例 (%)", line=dict(color="#FFB703", dash="dot")), row=1, col=1, secondary_y=True)
 
-    # 雙色柱狀圖 (正值紅色，負值綠色)
     bar_colors = ["#FF3366" if v >= 0 else "#2EC4B6" for v in df["net_new_highs"]]
     fig2.add_trace(go.Bar(x=df.index, y=df["net_new_highs"], name="淨新高差", marker_color=bar_colors), row=2, col=1)
     fig2.add_hline(y=0, line_color="gray", line_width=1, row=2, col=1)
@@ -314,7 +312,6 @@ def render_rs_rankings_tab():
                 data = json.load(f)
             df_rs = pd.DataFrame(data)
             
-            # 搜尋與過濾列
             search_query = st.text_input("🔍 搜尋股票代號或名稱", "")
             if search_query:
                 df_rs = df_rs[df_rs.astype(str).apply(lambda row: row.str.contains(search_query).any(), axis=1)]
@@ -330,7 +327,6 @@ def render_rs_rankings_tab():
 # 5. 主程式入口
 # -------------------------------------------------------------
 def main():
-    # 頂部導航頁籤
     tab_breadth, tab_rankings = st.tabs(["📊 大盤指標與市場寬度", "🏆 個股 RS 排名選股"])
 
     with tab_breadth:
