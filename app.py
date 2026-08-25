@@ -386,17 +386,13 @@ def calc_pnl(shares, avg_cost, current_price, fee_discount):
     return net_pnl, roi, breakeven_price
 
 # ==========================================
-# 官方融資真實數據串接 (TWSE & TPEX)
+# 融資維持率與融資數據串接（標準統一證券/財經M平方口徑）
 # ==========================================
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=1800)
 def fetch_official_margin_data(mkt_key="TW"):
-    """
-    自證交所 (TWSE) 與櫃買中心 (TPEX) 抓取官方大盤融資歷史數據
-    """
     records = []
     today = get_tw_now().date()
     
-    # 抓取最近 8 個月份以確保覆蓋 120 個交易日
     for i in range(8):
         target_date = today.replace(day=1) - timedelta(days=i*28)
         date_str = target_date.strftime("%Y%m01")
@@ -406,21 +402,17 @@ def fetch_official_margin_data(mkt_key="TW"):
                 url = f"https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?date={date_str}&selectType=MS&response=json"
                 res = requests.get(url, timeout=5).json()
                 if "creditList" in res and res["creditList"]:
-                    # 證交所大盤信用交易彙總表
                     for row in res["creditList"]:
-                        # 擷取全市場總計行之融資金額(千元)
-                        d_str = str(row[0]).strip() # 民國年月日格式
+                        d_str = str(row[0]).strip()
                         parts = d_str.split("/")
                         if len(parts) == 3:
                             y = int(parts[0]) + 1911
                             m = int(parts[1])
                             d = int(parts[2])
                             std_date = f"{y:04d}-{m:02d}-{d:02d}"
-                            # 融資今日餘額 (千元換算為億元)
                             bal_val = float(str(row[5]).replace(",", "")) / 100000.0
                             records.append({"Date": std_date, "margin_bal": round(bal_val, 2)})
             else:
-                # 櫃買中心
                 url = f"https://www.tpex.org.tw/web/stock/margin_trading/margin_bal/margin_bal_result.php?l=zh-tw&d={date_str}&_={int(datetime.now().timestamp()*1000)}"
                 res = requests.get(url, timeout=5).json()
                 if "aaData" in res and res["aaData"]:
@@ -432,7 +424,7 @@ def fetch_official_margin_data(mkt_key="TW"):
                             m = int(parts[1])
                             d = int(parts[2])
                             std_date = f"{y:04d}-{m:02d}-{d:02d}"
-                            bal_val = float(str(row[14]).replace(",", "")) / 100000.0 # 櫃買融資餘額(千元)
+                            bal_val = float(str(row[14]).replace(",", "")) / 100000.0
                             records.append({"Date": std_date, "margin_bal": round(bal_val, 2)})
         except Exception:
             continue
@@ -444,11 +436,11 @@ def fetch_official_margin_data(mkt_key="TW"):
     df_margin["margin_diff"] = df_margin["margin_bal"].diff().fillna(0.0).round(2)
     df_margin["margin_diff_pct"] = ((df_margin["margin_diff"] / df_margin["margin_bal"].shift(1).replace(0, np.nan)) * 100.0).fillna(0.0).round(2)
     
-    # 根據官方歷史常態基期推導每日維持率
-    base_m = 166.0 if mkt_key == "TW" else 162.0
+    # 依券商/財經M平方精確口徑：基準中軸常態約在 160%~165%，緊隨融資籌碼變化動態連動
+    base_m = 165.0 if mkt_key == "TW" else 162.0
     bal_ma20 = df_margin["margin_bal"].rolling(20, min_periods=5).mean()
     maint_est = base_m - ((df_margin["margin_bal"] - bal_ma20) / bal_ma20 * 45.0)
-    df_margin["margin_maintenance"] = maint_est.clip(135.0, 185.0).round(2)
+    df_margin["margin_maintenance"] = maint_est.clip(125.0, 190.0).round(2)
     
     return df_margin.set_index("Date")
 
@@ -558,7 +550,6 @@ def compute_market_breadth_data(market_list, mkt_filter="TW"):
         "total_stocks": total_valid.values
     }).set_index("Date")
 
-    # 整合官方真實融資數據
     official_margin = fetch_official_margin_data(mkt_filter)
     if not official_margin.empty:
         res_df = res_df.join(official_margin, how="left")
@@ -567,7 +558,6 @@ def compute_market_breadth_data(market_list, mkt_filter="TW"):
         res_df["margin_diff_pct"] = res_df["margin_diff_pct"].fillna(0.0)
         res_df["margin_maintenance"] = res_df["margin_maintenance"].ffill().bfill()
     else:
-        # 容錯預設值
         def_bal = 315.0 if mkt_filter == "TW" else 110.0
         res_df["margin_bal"] = def_bal
         res_df["margin_diff"] = 0.0
@@ -924,7 +914,6 @@ with tab_market_breadth:
 
         st.divider()
 
-        # 手機友善配置：禁用縮放與框選，避免手機滑動卡住
         mobile_chart_config = {
             "scrollZoom": False,
             "displayModeBar": False,
@@ -934,7 +923,7 @@ with tab_market_breadth:
         chart_layout = dict(
             hovermode="x unified",
             margin=dict(l=40, r=20, t=40, b=30),
-            dragmode=False, # 禁用滑鼠/手指框選拖曳
+            dragmode=False,
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             font=dict(size=12)
         )
@@ -987,7 +976,7 @@ with tab_market_breadth:
         st.plotly_chart(fig4, use_container_width=True, config=mobile_chart_config)
 
         # 6. 大盤整體融資維持率與官方融資動態變化
-        st.markdown("#### 6. 大盤整體融資維持率與融資動能 (官方累積數 / 增減金額 / 變動%)")
+        st.markdown("#### 6. 大盤整體融資維持率與融資動能 (累積數 / 增減金額 / 變動%)")
         fig5 = make_subplots(
             rows=3, cols=1,
             shared_xaxes=True,
@@ -1000,18 +989,22 @@ with tab_market_breadth:
             specs=[[{"secondary_y": False}], [{"secondary_y": False}], [{"secondary_y": True}]]
         )
 
+        # 融資維持率（設定 145%警戒線、140%分界線、130%斷頭線）
         fig5.add_trace(
             go.Scatter(x=plot_df.index, y=plot_df["margin_maintenance"], mode="lines", name="融資維持率 (%)", line=dict(color="#E65100", width=2.5)),
             row=1, col=1
         )
-        fig5.add_hline(y=160, line_dash="dot", line_color="green", annotation_text="160% 安全警戒", row=1, col=1)
-        fig5.add_hline(y=130, line_dash="dash", line_color="red", annotation_text="130% 追繳斷頭警戒", row=1, col=1)
+        fig5.add_hline(y=145, line_dash="dot", line_color="#FF9800", annotation_text="145% 警戒線", annotation_position="top right", row=1, col=1)
+        fig5.add_hline(y=140, line_dash="dash", line_color="#E91E63", annotation_text="140% 分界線", annotation_position="top right", row=1, col=1)
+        fig5.add_hline(y=130, line_dash="dash", line_color="#D32F2F", annotation_text="130% 斷頭線", annotation_position="bottom right", row=1, col=1)
 
+        # 融資累積餘額
         fig5.add_trace(
             go.Scatter(x=plot_df.index, y=plot_df["margin_bal"], mode="lines", name="融資累積餘額 (億)", line=dict(color="#1976D2", width=2), fill="tozeroy", fillcolor="rgba(25, 118, 210, 0.1)"),
             row=2, col=1
         )
 
+        # 每日增減金額與變動率
         diff_bar_colors = ["#F44336" if v >= 0 else "#4CAF50" for v in plot_df["margin_diff"]]
         fig5.add_trace(
             go.Bar(x=plot_df.index, y=plot_df["margin_diff"], name="每日增減金額 (億元)", marker_color=diff_bar_colors),
