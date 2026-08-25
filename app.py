@@ -82,7 +82,7 @@ def fetch_benchmark_data(benchmark_symbol="^TWII", period="1y"):
 
 def calculate_rs_ratio_series(target_df, benchmark_df, rs_window=60, momentum_window=20, calc_momentum=True):
     """
-    時間架構升級：60日 SMA 季線基準中軸 ＋ 20日 SMA 月線動能加速度
+    時間架構：60日 SMA 季線基準中軸 ＋ 20日 SMA 月線動能加速度
     """
     try:
         if target_df.empty or benchmark_df.empty:
@@ -108,20 +108,20 @@ def calculate_rs_ratio_series(target_df, benchmark_df, rs_window=60, momentum_wi
 
         merged = merged[(merged["benchmark_close"] > 0) & (merged["target_close"] > 0)].copy()
 
-        # 2.1 基礎相對強弱線 (Raw RS Line)
+        # 基礎相對強弱線 (Raw RS Line)
         merged["rs_raw"] = (merged["target_close"] / merged["benchmark_close"]) * 100.0
 
-        # 2.2 60 日 RS 基準中軸線 (RS Baseline 60MA)
+        # 60 日 RS 基準中軸線 (RS Baseline 60MA)
         merged["rs_ma60"] = merged["rs_raw"].rolling(window=rs_window, min_periods=max(1, rs_window // 2)).mean()
 
-        # 2.3 相對強弱比率 (RS_ratio)
+        # 相對強弱比率 (RS_ratio)
         merged["rs_ratio"] = np.where(
             merged["rs_ma60"] > 0,
             100.0 * (merged["rs_raw"] / merged["rs_ma60"]),
             100.0
         )
 
-        # 2.4 20 日 RS 動能比率 (RS_momentum)
+        # 20 日 RS 動能比率 (RS_momentum)
         if calc_momentum:
             rs_ratio_ma20 = merged["rs_ratio"].rolling(window=momentum_window, min_periods=max(1, momentum_window // 2)).mean()
             merged["rs_momentum"] = np.where(
@@ -138,7 +138,7 @@ def calculate_rs_ratio_series(target_df, benchmark_df, rs_window=60, momentum_wi
         return pd.DataFrame()
 
 # ==========================================
-# 順勢大師操作法則：動能狀態分類引擎（完整前綴修復）
+# 順勢操作法則：動能狀態分類引擎
 # ==========================================
 def get_trend_master_status(row):
     try:
@@ -475,7 +475,6 @@ with tab_portfolio:
                 st.divider()
                 st.subheader(f"{name} ({sym}.{mkt}) ｜ 📦 {shares:,} 股 ｜ {status_badge}")
                 
-                # 行動端 2 欄排版：動能指標
                 m1, m2 = st.columns(2)
                 m1.metric("RS_ratio 比率 (60MA)", f"{rs_ratio_val}", f"{'🔥 超越大盤' if rs_ratio_val>=100 else '❄️ 落後大盤'}")
                 m2.metric("RS Rating 評分", f"{rs_score} 分", f"動能比: {rs_mom_val}")
@@ -484,7 +483,6 @@ with tab_portfolio:
                 m3.metric("近 5 日動能", f"{r_5d:+}%")
                 m4.metric("近 1 個月動能", f"{r_1m:+}%")
 
-                # 行動端 2 欄排版：持倉與風控
                 c1, c2 = st.columns(2)
                 c1.metric("最新市價", f"${cur_price}")
                 c2.metric("未實現損益", f"{net_pnl:+,} 元", f"{roi:+}%")
@@ -495,7 +493,7 @@ with tab_portfolio:
 
                 c5, c6 = st.columns(2)
                 stop_label = "🛡️ 保本停損線" if is_breakeven_active else f"🔴 初始停損 (-{stop_loss_pct}%)"
-                c5.metric(stop_label, f"${effective_stop_price}")
+                c5.metric(stop_label, f"${effective_stop_prrice}")
                 c6.metric("累積已實現損益", f"{realized_pnl:+,} 元")
 
                 st.markdown(f"**風控狀態：** :{status_color}[{status_text}]")
@@ -570,7 +568,6 @@ with tab_leaderboard:
                 sym = m.get("symbol")
                 raw_score = m.get("score", 0.0)
                 
-                # 即時算取 60日/20日 雙軸 RS_ratio
                 _, _, _, _, _, _, query_rs_ratio, query_rs_mom = fetch_stock_and_momentum(sym, m_type, get_tw_now_str("%Y-%m-%d"))
                 m_eval = m.copy()
                 m_eval["rs_ratio"] = query_rs_ratio
@@ -633,4 +630,4 @@ with tab_leaderboard:
             height=450
         )
     else:
-        st.info("尚無排名資料，請先執行 Actions 排程產生資料。")
+        st.info("尚無排名資料，請先確認 market_rankings.json 檔案是否存在。")
