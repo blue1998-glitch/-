@@ -1,39 +1,14 @@
+import streamlit as pd_st
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-from datetime import datetime, date, timezone, timedelta
+import numpy as np
+from datetime import datetime, timezone, timedelta
 import json
 import os
 import requests
 
-# 頁面初始化：針對行動端預設展開與寬度設定
-st.set_page_config(
-    page_title="台股動能 RS 排行與風控儀表板",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
-
-# 注入行動端專屬優化 CSS
-st.markdown("""
-<style>
-    .block-container {
-        padding-top: 1rem;
-        padding-bottom: 2rem;
-        padding-left: 0.6rem;
-        padding-right: 0.6rem;
-    }
-    [data-testid="stMetricValue"] {
-        font-size: 1.2rem !important;
-    }
-    [data-testid="stMetricDelta"] {
-        font-size: 0.8rem !important;
-    }
-    .stButton > button {
-        width: 100%;
-        border-radius: 8px;
-    }
-</style>
-""", unsafe_allow_html=True)
+st.set_page_config(layout="wide", initial_sidebar_state="collapsed")
 
 DATA_FILE = "portfolio.json"
 TW_TZ = timezone(timedelta(hours=8))
@@ -56,7 +31,7 @@ def _load_official_names():
             with open("stock_names.json", "r", encoding="utf-8") as f:
                 return json.load(f)
     except Exception:
-        return {}
+        pass
     return {}
 
 OFFICIAL_STOCK_NAMES = _load_official_names()
@@ -71,7 +46,6 @@ def clean_stock_name(name, symbol=None):
         return str(symbol) if symbol else ""
     
     raw = str(name).strip()
-    
     for sym_k, std_name in OFFICIAL_STOCK_NAMES.items():
         if raw == std_name or raw == f"{std_name}股份有限公司" or raw.startswith(std_name):
             if len(raw) <= len(std_name) + 12:
@@ -88,47 +62,127 @@ def clean_stock_name(name, symbol=None):
     return cleaned if cleaned else raw
 
 # ==========================================
+# 核心數學模組：相對強弱比率 (RS_ratio) 向量運算引擎
+# ==========================================
+@st.cache_data(ttl=1800)
+def fetch_benchmark_data(benchmark_symbol="^TWII", period="1y"):
+    """獲取基準指數（預設台股加權指數 ^TWII）歷史收盤數據"""
+    try:
+        bm = yf.Ticker(benchmark_symbol)
+        df = bm.history(period=period)
+        if df.empty:
+            df = yf.Ticker("0050.TW").history(period=period)
+        if not df.empty:
+            df = df.reset_index()
+            if "Date" in df.columns:
+                df["Date"] = pd.to_datetime(df["Date"]).dt.tz_localize(None)
+            return df[["Date", "Close"]].rename(columns={"Close": "benchmark_close"})
+    except Exception:
+        pass
+    return pd.DataFrame()
+
+def calculate_rs_ratio_series(target_df, benchmark_df, rs_window=50, momentum_window=10, calc_momentum=True):
+    """
+    符合規格書之標準化與動能化 RS_ratio 向量化運算函式
+    """
+    try:
+        if target_df.empty or benchmark_df.empty:
+            return pd.DataFrame()
+
+        t_df = target_df.copy()
+        if "Date" not in t_df.columns:
+            t_df = t_df.reset_index()
+        t_df["Date"] = pd.to_datetime(t_df["Date"]).dt.tz_localize(None)
+        t_df = t_df[["Date", "Close"]].rename(columns={"Close": "target_close"})
+
+        b_df = benchmark_df.copy()
+        if "Date" not in b_df.columns:
+            b_df = b_df.reset_index()
+        b_df["Date"] = pd.to_datetime(b_df["Date"]).dt.tz_localize(None)
+        if "benchmark_close" not in b_df.columns:
+            b_df = b_df.rename(columns={"Close": "benchmark_close"})
+        b_df = b_df[["Date", "benchmark_close"]]
+
+        merged = pd.merge(t_df, b_df, on="Date", how="inner").sort_values("Date").reset_index(drop=True)
+        if len(merged) == 0:
+            return pd.DataFrame()
+
+        merged = merged[(merged["benchmark_close"] > 0) & (merged["target_close"] > 0)].copy()
+
+        # 2.1 基礎相對強弱線 (Raw RS Line)
+        merged["rs_raw"] = (merged["target_close"] / merged["benchmark_close"]) * 100.0
+
+        # 2.2 RS 移動平均基準線 (RS Baseline MA)
+        merged["rs_ma"] = merged["rs_raw"].rolling(window=rs_window, min_periods=rs_window).mean()
+
+        # 2.3 相對強弱比率 (RS_ratio) - 防呆除以零
+        merged["rs_ratio"] = np.where(
+            merged["rs_ma"] > 0,
+            100.0 * (merged["rs_raw"] / merged["rs_ma"]),
+            np.nan
+        )
+
+        # 2.4 可選擴充：RS 動能比率 (RS_momentum)
+        if calc_momentum:
+            rs_ratio_ma = merged["rs_ratio"].rolling(window=momentum_window, min_periods=momentum_window).mean()
+            merged["rs_momentum"] = np.where(
+                rs_ratio_ma > 0,
+                100.0 * (merged["rs_ratio"] / rs_ratio_ma),
+                np.nan
+            )
+        else:
+            merged["rs_momentum"] = np.nan
+
+        merged = merged.rename(columns={"Date": "date"})
+        return merged
+    except Exception:
+        return pd.DataFrame()
+
+# ==========================================
 # 順勢大師操作法則：動能狀態分類引擎
 # ==========================================
 def get_trend_master_status(row):
     rs = row.get("rs_rating", 50)
     badge = str(row.get("pattern_badge", ""))
     r_5d = row.get("r_5d", 0.0)
+    rs_ratio = row.get("rs_ratio", None)
+    
+    prefix = "🔥[強勢] " if rs_ratio is not None and rs_ratio >= 100 else ("❄️[弱勢] " if rs_ratio is not None else "")
     
     if rs >= 95:
         if "新高" in badge or r_5d >= 10.0:
-            return "👑 頂級領袖・突破新高 (主力首選)"
+            return f"{prefix}👑 頂級領袖・突破新高 (主力首選)"
         elif "VCP" in badge:
-            return "🎯 頂級VCP・即將噴出 (極限強勢)"
+            return f"{prefix}🎯 頂級VCP・即將噴出 (極限強勢)"
         else:
-            return "🚀 極致飆股・主升奔馳 (最強5%)"
+            return f"{prefix}🚀 極致飆股・主升奔馳 (最強5%)"
     elif rs >= 90:
         if "VCP" in badge:
-            return "🎯 VCP蓄勢・突破在即 (黃金買點)"
+            return f"{prefix}🎯 VCP蓄勢・突破在即 (黃金買點)"
         elif "新高" in badge:
-            return "⭐ 領袖新高・順風追擊 (多頭先鋒)"
+            return f"{prefix}⭐ 領袖新高・順風追擊 (多頭先鋒)"
         else:
-            return "🚀 狂暴主升・沿線抱牢 (第一梯隊)"
+            return f"{prefix}🚀 狂暴主升・沿線抱牢 (第一梯隊)"
     elif rs >= 80:
         if "VCP" in badge:
-            return "🎯 VCP收縮・縮量待發 (觀察進場)"
+            return f"{prefix}🎯 VCP收縮・縮量待發 (觀察進場)"
         elif "新高" in badge:
-            return "⭐ 區間突破・趨勢確立 (順勢加碼)"
+            return f"{prefix}⭐ 區間突破・趨勢確立 (順勢加碼)"
         elif "反彈" in badge:
-            return "⚠️ 短線強彈・觀察季線 (謹慎試單)"
+            return f"{prefix}⚠️ 短線強彈・觀察季線 (謹慎試單)"
         else:
-            return "⚡ 強大多頭・順勢推升 (右側安全)"
+            return f"{prefix}⚡ 強大多頭・順勢推升 (右側安全)"
     elif rs >= 75:
         if "反彈" in badge:
-            return "⚠️ 左側反彈・上方有壓 (短打勿追)"
+            return f"{prefix}⚠️ 左側反彈・上方有壓 (短打勿追)"
         elif "VCP" in badge:
-            return "🎯 底部收斂・轉強蓄勢 (第二梯隊)"
+            return f"{prefix}🎯 底部收斂・轉強蓄勢 (第二梯隊)"
         else:
-            return "🔥 突破初升・動能成型 (第三梯隊)"
+            return f"{prefix}🔥 突破初升・動能成型 (第三梯隊)"
     elif rs >= 50:
-        return "📦 區間整理・等待表態 (動能平平)"
+        return f"{prefix}📦 區間整理・等待表態 (動能平平)"
     else:
-        return "⛔ 弱勢落後・左側不碰 (避開死水)"
+        return f"{prefix}⛔ 弱勢落後・左側不碰 (避開死水)"
 
 def load_data():
     if os.path.exists(DATA_FILE):
@@ -143,20 +197,17 @@ def load_data():
     return []
 
 def save_data(data):
-    try:
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        st.error(f"資料儲存失敗: {str(e)}")
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 def make_log_entry(action, price, share_delta, remaining_shares, pnl_text, note):
     return {
-        "時間": get_tw_now_str("%m/%d %H:%M"),
+        "時間": get_tw_now_str("%Y-%m-%d %H:%M"),
         "動作": action,
         "成交價": price,
-        "異動": share_delta,
-        "剩餘": remaining_shares,
-        "損益": pnl_text,
+        "異動股數": share_delta,
+        "剩餘股數": remaining_shares,
+        "單筆實現損益": pnl_text,
         "備註": note
     }
 
@@ -168,12 +219,12 @@ def load_market_data():
     if os.path.exists("market_rankings.json"):
         try:
             mtime = os.path.getmtime("market_rankings.json")
-            mtime_str = datetime.fromtimestamp(mtime, tz=TW_TZ).strftime("%Y-%m-%d %H:%M")
+            mtime_str = datetime.fromtimestamp(mtime, tz=TW_TZ).strftime("%Y-%m-%d %H:%M:%S")
             with open("market_rankings.json", "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if isinstance(data, list) and len(data) > 0:
                     raw_list = data
-                    status_msg = f"本機檔案載入成功 ({mtime_str})"
+                    status_msg = f"本機檔案載入成功 (產出時間: {mtime_str})"
         except Exception:
             pass
 
@@ -184,9 +235,9 @@ def load_market_data():
             if res.status_code == 200:
                 data = res.json()
                 if isinstance(data, list) and len(data) > 0:
-                    fetch_time = get_tw_now_str("%H:%M:%S")
+                    fetch_time = get_tw_now_str()
                     raw_list = data
-                    status_msg = f"線上同步成功 ({fetch_time})"
+                    status_msg = f"線上同步成功 (同步時間: {fetch_time})"
         except Exception as e:
             return [], f"連線異常: {str(e)}"
 
@@ -206,16 +257,18 @@ def fetch_stock_and_momentum(symbol, market, entry_date_str):
     ticker = f"{symbol}.TWO" if "TWO" in str(market).upper() or market == "上櫃" else f"{symbol}.TW"
     try:
         stock = yf.Ticker(ticker)
-        df = stock.history(start=entry_date_str)
-        if df.empty:
-            df = stock.history(period="1mo")
-        if df.empty:
-            return None, None, None, 0.0, 0.0, 0.0
+        df_all = stock.history(period="1y")
+        if df_all.empty:
+            return None, None, None, 0.0, 0.0, 0.0, 0.0, 0.0
         
-        current_price = round(float(df["Close"].iloc[-1]), 2)
-        max_high = round(float(df["High"].max()), 2)
+        current_price = round(float(df_all["Close"].iloc[-1]), 2)
         
-        df_all = stock.history(period="6mo")
+        try:
+            df_entry = df_all.loc[df_all.index >= entry_date_str]
+            max_high = round(float(df_entry["High"].max()), 2) if not df_entry.empty else current_price
+        except Exception:
+            max_high = current_price
+            
         ma20 = round(float(df_all["Close"].tail(20).mean()), 2) if len(df_all) >= 20 else current_price
 
         closes = df_all["Close"]
@@ -223,9 +276,22 @@ def fetch_stock_and_momentum(symbol, market, entry_date_str):
         r_1m = round(((closes.iloc[-1] - closes.iloc[-21]) / closes.iloc[-21]) * 100, 2) if len(closes) >= 21 else r_5d
         r_1q = round(((closes.iloc[-1] - closes.iloc[-61]) / closes.iloc[-61]) * 100, 2) if len(closes) >= 61 else r_1m
 
-        return current_price, max_high, ma20, r_5d, r_1m, r_1q
+        # RS_ratio 計算
+        benchmark_df = fetch_benchmark_data("^TWII", period="1y")
+        rs_calc_df = calculate_rs_ratio_series(df_all, benchmark_df, rs_window=50, momentum_window=10, calc_momentum=True)
+        
+        if not rs_calc_df.empty and "rs_ratio" in rs_calc_df.columns:
+            latest_ratio = rs_calc_df["rs_ratio"].dropna().iloc[-1] if not rs_calc_df["rs_ratio"].dropna().empty else 100.0
+            latest_mom = rs_calc_df["rs_momentum"].dropna().iloc[-1] if not rs_calc_df["rs_momentum"].dropna().empty else 100.0
+            rs_ratio_val = round(float(latest_ratio), 2)
+            rs_mom_val = round(float(latest_mom), 2)
+        else:
+            rs_ratio_val = 100.0
+            rs_mom_val = 100.0
+
+        return current_price, max_high, ma20, r_5d, r_1m, r_1q, rs_ratio_val, rs_mom_val
     except Exception:
-        return None, None, None, 0.0, 0.0, 0.0
+        return None, None, None, 0.0, 0.0, 0.0, 100.0, 100.0
 
 def calc_pnl(shares, avg_cost, current_price, fee_discount):
     buy_fee_rate = 0.001425 * fee_discount
@@ -238,53 +304,56 @@ def calc_pnl(shares, avg_cost, current_price, fee_discount):
     breakeven_price = round(avg_cost * (1 + buy_fee_rate + sell_fee_rate + tax_rate), 2)
     return net_pnl, roi, breakeven_price
 
+# ==========================================
+# 介面渲染
+# ==========================================
 market_rankings, db_status = load_market_data()
 
-# 主標題
-st.title("🚀 台股動能 RS 風控儀表板")
+st.title("🚀 台股動能 RS 領袖排行與風控儀表板")
 
-with st.expander("🛡️ 五大量化風控機制速查指南", expanded=False):
-    st.markdown("""
-    - **1. 🔴 初始固定停損**：跌破設定趴數（預設 -7%）無條件停損，截斷重大虧損。
-    - **2. 🛡️ 動態保本停損**：波段獲利達標（預設 +8%）啟動，停損推至零虧損保本價。
-    - **3. 🟣 高點回檔停利**：自最高價回檔達設定幅度（預設 10%），觸發分批減碼。
-    - **4. 🟠 月線乖離過熱**：現價與 20MA 正乖離過大（預設 +30%），短線過熱調節。
-    - **5. ⏳ 時間動能停損**：持有達標（預設 10 天）且損益在 ±2% 內停滯，建議換股。
-    """)
+with st.expander("🛡️ 系統五大自動化量化風控與 RS_ratio 說明", expanded=False):
+    st.markdown("**RS_ratio 說明**：以加權指數為基準，大於 100 為超越大盤的強勢領袖股，小於 100 為落後弱勢股。")
+    r1, r2 = st.columns(2)
+    with r1:
+        st.markdown("**1. 🔴 初始停損**：跌破預設趴數無條件停損。")
+        st.markdown("**2. 🛡️ 保本停損**：獲利達標鎖定零虧損。")
+        st.markdown("**3. 🟣 高點回檔**：自高點拉回觸發分批停利。")
+    with r2:
+        st.markdown("**4. 🟠 月線過熱**：20MA 正乖離過大建議調節。")
+        st.markdown("**5. ⏳ 時間停損**：持股過久動能停滯建議換股。")
 
 if len(market_rankings) > 0:
-    st.caption(f"🟢 資料庫：**{len(market_rankings)}** 檔 ｜ {db_status}")
+    st.info(f"🟢 **全市場 RS 資料庫已就緒** ｜ 收錄 **{len(market_rankings)}** 檔台股 ｜ 狀態：{db_status}")
 else:
     st.warning("🟡 正在等待全市場 RS 排名資料載入...")
 
-tab_portfolio, tab_leaderboard = st.tabs(["📈 個人持倉風控", "🏆 全市場 RS 排行榜"])
+tab_portfolio, tab_leaderboard = st.tabs(["📈 個人持倉風控監控", "🏆 全市場 RS 排行榜 & 萬用個股查詢"])
 
 # ==========================================
 # 分頁 1：個人持倉風控監控儀表板
 # ==========================================
 with tab_portfolio:
-    with st.expander("⚙️ 風控與參數設定", expanded=False):
+    with st.expander("⚙️ 風控與動能參數設定", expanded=False):
         c1, c2 = st.columns(2)
         with c1:
-            stop_loss_pct = st.number_input("🔴 初始停損 (%)", min_value=1.0, max_value=50.0, value=7.0, step=0.5, format="%.1f")
-            breakeven_trigger_pct = st.number_input("🛡️ 保本門檻 (%)", min_value=1.0, max_value=50.0, value=8.0, step=0.5, format="%.1f")
-            pyramid_safety_margin = st.number_input("⚖️ 加碼安全緩衝 (%)", min_value=0.5, max_value=50.0, value=4.0, step=0.5, format="%.1f")
+            stop_loss_pct = st.number_input("🔴 初始停損趴數 (%)", min_value=1.0, max_value=50.0, value=7.0, step=0.5, format="%.1f")
+            breakeven_trigger_pct = st.number_input("🛡️ 保本停損啟動門檻 (%)", min_value=1.0, max_value=50.0, value=8.0, step=0.5, format="%.1f")
+            pullback_target_pct = st.number_input("🟣 高點回檔停利趴數 (%)", min_value=1.0, max_value=50.0, value=10.0, step=0.5, format="%.1f")
         with c2:
-            pullback_target_pct = st.number_input("🟣 高點回檔停利 (%)", min_value=1.0, max_value=50.0, value=10.0, step=0.5, format="%.1f")
-            bias_threshold = st.number_input("🟠 月線正乖離閥值 (%)", min_value=5.0, max_value=100.0, value=30.0, step=1.0, format="%.0f")
-            time_stop_days = st.number_input("⏳ 時間停損 (天)", min_value=1, max_value=100, value=10, step=1)
-        discount_display = st.number_input("💰 手續費折數", min_value=0.01, max_value=1.0, value=0.60, step=0.05, format="%.2f")
+            bias_threshold = st.number_input("🟠 月線正乖離過熱閥值 (%)", min_value=5.0, max_value=100.0, value=30.0, step=1.0, format="%.0f")
+            time_stop_days = st.number_input("⏳ 時間停損天數（天）", min_value=1, max_value=100, value=10, step=1)
+            discount_display = st.number_input("💰 券商手續費折數", min_value=0.01, max_value=1.0, value=0.60, step=0.05, format="%.2f")
 
     portfolio = load_data()
 
     with st.expander("➕ 新增持股 / 建倉", expanded=False):
         with st.form("add_stock_form"):
-            f_col1, f_col2 = st.columns(2)
-            with f_col1:
-                sym = st.text_input("股票代號", placeholder="例: 2330")
-                name = st.text_input("股票名稱", placeholder="例: 台積電")
-                mkt = st.selectbox("市場別", ["TW (上市)", "TWO (上櫃)"])
-            with f_col2:
+            fc1, fc2 = st.columns(2)
+            with fc1:
+                sym = st.text_input("股票代號", placeholder="例如: 3441 或 2330")
+                name = st.text_input("股票名稱", placeholder="例如: 聯一光")
+                mkt = st.selectbox("市場別", ["TWO (上櫃)", "TW (上市)"])
+            with fc2:
                 entry_d = st.date_input("進場日期", value=get_tw_now().date())
                 price = st.number_input("買進價格", min_value=0.1, step=0.1, value=100.0)
                 shs = st.number_input("買進股數", min_value=1, step=1000, value=1000)
@@ -303,7 +372,7 @@ with tab_portfolio:
                     "record_high": price,
                     "realized_pnl": 0,
                     "history": [
-                        make_log_entry("🌱 初始建倉", price, f"+{int(shs)}", int(shs), "0 元", f"成本 ${price}")
+                        make_log_entry("🌱 初始建倉", price, f"+{int(shs)}", int(shs), "0 元", f"起始成本 ${price}")
                     ]
                 }
                 portfolio.append(new_item)
@@ -314,11 +383,11 @@ with tab_portfolio:
     if not portfolio:
         st.info("目前尚無持倉，請點擊上方「➕ 新增持股」建立第一檔股票。")
     else:
-        if st.button("🔄 刷新最新市價與評分", use_container_width=True):
+        if st.button("🔄 刷新最新市價與動能評分", use_container_width=True):
             st.cache_data.clear()
-            st.session_state.last_portfolio_refresh = get_tw_now_str("%H:%M:%S")
+            st.session_state.last_portfolio_refresh = get_tw_now_str()
             st.rerun()
-        st.caption(f"🕒 最新更新時間：{st.session_state.last_portfolio_refresh}")
+        st.caption(f"🕒 最新市價更新時間：{st.session_state.last_portfolio_refresh}")
 
         for idx, item in enumerate(portfolio):
             sym = item["symbol"]
@@ -334,7 +403,7 @@ with tab_portfolio:
             info = get_stock_rs_info(sym, market_rankings)
             rs_score = info.get("rs_rating", 50) if info else 50
             
-            cur_price, max_high, ma20, r_5d, r_1m, r_1q = fetch_stock_and_momentum(sym, mkt, entry_d)
+            cur_price, max_high, ma20, r_5d, r_1m, r_1q, rs_ratio_val, rs_mom_val = fetch_stock_and_momentum(sym, mkt, entry_d)
             if cur_price is None:
                 cur_price, max_high, ma20 = avg_cost, stored_high, avg_cost
 
@@ -352,7 +421,9 @@ with tab_portfolio:
             except Exception:
                 days_held = 0
 
-            status_badge = get_trend_master_status(info if info else {"rs_rating": rs_score, "pattern_badge": "", "r_5d": r_5d})
+            status_item = info.copy() if info else {"rs_rating": rs_score, "pattern_badge": "", "r_5d": r_5d}
+            status_item["rs_ratio"] = rs_ratio_val
+            status_badge = get_trend_master_status(status_item)
 
             max_gain_pct = ((actual_high - avg_cost) / avg_cost) * 100
             is_breakeven_active = max_gain_pct >= breakeven_trigger_pct
@@ -360,109 +431,99 @@ with tab_portfolio:
             effective_stop_price = max(initial_stop_price, breakeven_p) if is_breakeven_active else initial_stop_price
             pullback_price = round(actual_high * (1 - pullback_target_pct / 100), 2)
 
-            status_text = "⚪ 正常續抱中"
+            status_text = "⚪ 持股續抱中"
             status_color = "gray"
 
             if cur_price <= effective_stop_price:
                 if is_breakeven_active:
-                    status_text = f"🛡️ 觸發保本停損（${effective_stop_price}）！保本出場"
+                    status_text = f"🛡️ 觸發保本出場線（{effective_stop_price} 元）！強制保護本金零虧損出場"
                     status_color = "red"
                 else:
-                    status_text = f"🔴 觸發 -{stop_loss_pct}% 停損（${effective_stop_price}）！全數出場"
+                    status_text = f"🔴 觸發 -{stop_loss_pct}% 停損線（{effective_stop_price} 元）！全數出場"
                     status_color = "red"
             elif cur_price <= pullback_price and cur_price > avg_cost:
-                status_text = f"🟣 高點回檔 {pullback_target_pct}%（破 ${pullback_price}）！建議減碼"
+                status_text = f"🟣 觸發高點回檔 {pullback_target_pct}%（跌破 {pullback_price} 元）！建議減碼"
                 status_color = "purple"
             elif bias_20 >= bias_threshold:
-                status_text = f"🟠 月線正乖離 {bias_20}%（過熱）！建議調節"
+                status_text = f"🟠 月線正乖離達 {bias_20}%（過熱）！建議減碼"
                 status_color = "orange"
             elif days_held >= time_stop_days and abs(roi) <= 2.0:
-                status_text = f"⏳ 觸發時間停損（持股 {days_held} 天動能停滯）！建議換股"
+                status_text = f"⏳ 觸發時間停損（持股已 {days_held} 天，動能停滯）！建議換股"
                 status_color = "orange"
 
-            with st.container(border=True):
-                st.markdown(f"### {name} `({sym}.{mkt})`")
-                st.caption(f"📦 持有: **{shares:,} 股** ｜ 持有 **{days_held} 天** ｜ {status_badge}")
-                
-                # 依序排列動能指標：RS分數、5日報酬、1月報酬、1季報酬
-                m1, m2 = st.columns(2)
-                m1.metric("RS分數", f"{rs_score} 分")
-                m2.metric("5日報酬", f"{r_5d:+}%")
-                
-                m3, m4 = st.columns(2)
-                m3.metric("1月報酬", f"{r_1m:+}%")
-                m4.metric("1季報酬", f"{r_1q:+}%")
-
+            with st.container():
                 st.divider()
+                st.subheader(f"{name} ({sym}.{mkt}) ｜ 📦 {shares:,} 股 ｜ {status_badge}")
+                
+                # 行動端 2 欄排版：動能指標
+                m1, m2 = st.columns(2)
+                m1.metric("RS_ratio 比率 (50MA)", f"{rs_ratio_val}", f"{'優於大盤' if rs_ratio_val>=100 else '劣於大盤'}")
+                m2.metric("RS Rating 評分", f"{rs_score} 分", f"動能: {rs_mom_val}")
 
-                # 持倉與損益指標卡
-                p1, p2 = st.columns(2)
-                p1.metric("最新市價", f"${cur_price}", f"成本: ${avg_cost}")
-                p2.metric("未實現損益", f"{net_pnl:+,} 元", f"{roi:+}%")
+                m3, m4 = st.columns(2)
+                m3.metric("近 5 日動能", f"{r_5d:+}%")
+                m4.metric("近 1 個月動能", f"{r_1m:+}%")
 
-                p3, p4 = st.columns(2)
-                p3.metric("建倉最高價", f"${actual_high}", f"回檔: -{pullback_pct}%")
-                stop_label = "🛡️ 保本防線" if is_breakeven_active else f"🔴 初始停損 (-{stop_loss_pct}%)"
-                p4.metric(stop_label, f"${effective_stop_price}", f"回檔價: ${pullback_price}")
+                # 行動端 2 欄排版：持倉與風控
+                c1, c2 = st.columns(2)
+                c1.metric("最新市價", f"${cur_price}")
+                c2.metric("未實現損益", f"{net_pnl:+,} 元", f"{roi:+}%")
 
-                p5, p6 = st.columns(2)
-                p5.metric("累積已實現損益", f"{realized_pnl:+,} 元")
-                p6.metric("剩餘股數", f"{shares:,} 股", f"持有 {days_held} 天")
+                c3, c4 = st.columns(2)
+                c3.metric("剩餘股數 / 均價", f"{shares:,} 股", f"均價: ${avg_cost}")
+                c4.metric("高點回檔", f"${actual_high}", f"-{pullback_pct}%")
 
-                st.markdown(f"**風控訊號：** :{status_color}[{status_text}]")
+                c5, c6 = st.columns(2)
+                stop_label = "🛡️ 保本停損線" if is_breakeven_active else f"🔴 初始停損 (-{stop_loss_pct}%)"
+                c5.metric(stop_label, f"${effective_stop_price}")
+                c6.metric("累積已實現損益", f"{realized_pnl:+,} 元")
 
-                # 操作選單
-                with st.expander(f"⚙️ 交易操作（加碼 / 減碼 / 結清）"):
-                    tab_add, tab_red, tab_del = st.tabs(["🔼 加碼", "🔽 減碼", "🗑️ 結清"])
-                    
-                    with tab_add:
-                        add_p = st.number_input("加碼價格", min_value=0.1, step=0.1, value=cur_price, key=f"add_p_{idx}")
-                        add_s = st.number_input("加碼股數", min_value=1, step=100, value=1000, key=f"add_s_{idx}")
-                        new_tot = shares + int(add_s)
-                        sim_avg = round(((shares * avg_cost) + (int(add_s) * add_p)) / new_tot, 2)
-                        buf = round(((cur_price - sim_avg) / cur_price) * 100, 1)
-                        st.caption(f"試算新均價：**${sim_avg}** ｜ 安全緩衝：**{buf:+}%**")
-                        
-                        if st.button("確認加碼", key=f"btn_add_{idx}", use_container_width=True):
-                            new_log = make_log_entry("🔼 順勢加碼", add_p, f"+{int(add_s)}", new_tot, "-", f"均價 ${sim_avg}")
-                            portfolio[idx].setdefault("history", []).append(new_log)
-                            portfolio[idx]["shares"] = new_tot
-                            portfolio[idx]["avg_cost"] = sim_avg
+                st.markdown(f"**風控狀態：** :{status_color}[{status_text}]")
+
+                with st.expander(f"⚙️ 操作 {name}（加碼 / 減碼 / 結清）"):
+                    st.write("##### 🔼 順勢加碼")
+                    add_p = st.number_input("加碼價格", min_value=0.1, step=0.1, value=cur_price, key=f"add_p_{idx}")
+                    add_s = st.number_input("加碼股數", min_value=1, step=100, value=1000, key=f"add_s_{idx}")
+                    new_tot = shares + int(add_s)
+                    sim_avg = round(((shares * avg_cost) + (int(add_s) * add_p)) / new_tot, 2)
+                    buf = round(((cur_price - sim_avg) / cur_price) * 100, 1)
+                    st.caption(f"試算新均價：**${sim_avg}** ｜ 安全緩衝：**{buf:+}%**")
+                    if st.button("確認加碼", key=f"btn_add_{idx}", use_container_width=True):
+                        new_log = make_log_entry("🔼 順勢加碼", add_p, f"+{int(add_s)}", new_tot, "-", f"新均價 ${sim_avg} (緩衝 {buf:+}%)")
+                        portfolio[idx].setdefault("history", []).append(new_log)
+                        portfolio[idx]["shares"] = new_tot
+                        portfolio[idx]["avg_cost"] = sim_avg
+                        save_data(portfolio)
+                        st.rerun()
+
+                    st.divider()
+                    st.write("##### 🔽 分批減碼")
+                    red_p = st.number_input("減碼價格", min_value=0.1, step=0.1, value=cur_price, key=f"red_p_{idx}")
+                    red_s = st.number_input("減碼股數", min_value=1, max_value=shares, step=100, value=min(1000, shares), key=f"red_s_{idx}")
+                    sim_red_pnl, sim_red_roi, _ = calc_pnl(int(red_s), avg_cost, red_p, discount_display)
+                    st.caption(f"試算本次損益：**{sim_red_pnl:+,} 元** ({sim_red_roi:+}%)")
+                    if st.button("確認減碼", key=f"btn_red_{idx}", use_container_width=True):
+                        new_shares = shares - int(red_s)
+                        current_realized = item.get("realized_pnl", 0)
+                        new_log = make_log_entry("🔽 分批減碼", red_p, f"-{int(red_s)}", new_shares, f"{sim_red_pnl:+,} 元", f"報酬率 {sim_red_roi:+}%")
+                        portfolio[idx].setdefault("history", []).append(new_log)
+                        if new_shares > 0:
+                            portfolio[idx]["shares"] = new_shares
+                            portfolio[idx]["realized_pnl"] = current_realized + sim_red_pnl
                             save_data(portfolio)
-                            st.rerun()
-
-                    with tab_red:
-                        red_p = st.number_input("減碼價格", min_value=0.1, step=0.1, value=cur_price, key=f"red_p_{idx}")
-                        red_s = st.number_input("減碼股數", min_value=1, max_value=shares, step=100, value=min(1000, shares), key=f"red_s_{idx}")
-                        
-                        sim_red_pnl, sim_red_roi, _ = calc_pnl(int(red_s), avg_cost, red_p, discount_display)
-                        st.caption(f"試算實現損益：**{sim_red_pnl:+,} 元** ({sim_red_roi:+}%)")
-                        
-                        if st.button("確認減碼", key=f"btn_red_{idx}", use_container_width=True):
-                            new_shares = shares - int(red_s)
-                            current_realized = item.get("realized_pnl", 0)
-                            
-                            new_log = make_log_entry("🔽 分批減碼", red_p, f"-{int(red_s)}", new_shares, f"{sim_red_pnl:+,} 元", f"報酬 {sim_red_roi:+}%")
-                            portfolio[idx].setdefault("history", []).append(new_log)
-
-                            if new_shares > 0:
-                                portfolio[idx]["shares"] = new_shares
-                                portfolio[idx]["realized_pnl"] = current_realized + sim_red_pnl
-                                save_data(portfolio)
-                            else:
-                                portfolio.pop(idx)
-                                save_data(portfolio)
-                            st.rerun()
-
-                    with tab_del:
-                        st.write("確認全數結清並移除此持倉？")
-                        if st.button("確認全數結清出場", key=f"del_{idx}", use_container_width=True):
+                        else:
                             portfolio.pop(idx)
                             save_data(portfolio)
-                            st.rerun()
+                        st.rerun()
+
+                    st.divider()
+                    if st.button("🗑️ 結清出場", key=f"del_{idx}", use_container_width=True):
+                        portfolio.pop(idx)
+                        save_data(portfolio)
+                        st.rerun()
 
                 if len(history_logs) > 0:
-                    with st.expander(f"📜 歷史交易明細", expanded=False):
+                    with st.expander(f"📜 {name} 交易歷程", expanded=False):
                         df_h = pd.DataFrame(history_logs)
                         st.dataframe(df_h, use_container_width=True, hide_index=True)
 
@@ -470,8 +531,8 @@ with tab_portfolio:
 # 分頁 2：全市場 RS 排行榜與個股查詢
 # ==========================================
 with tab_leaderboard:
-    st.subheader("🔍 萬用個股 RS 查詢")
-    search_query = st.text_input("輸入股票代號或名稱", placeholder="例：2330、聯一光")
+    st.subheader("🔍 萬用個股 RS & RS_ratio 評分查詢")
+    search_query = st.text_input("輸入股票代號或名稱查詢（例如：2330、聯一光、3441）", placeholder="請輸入代號或名稱...")
     
     if search_query:
         query_str = search_query.strip().upper()
@@ -481,28 +542,32 @@ with tab_leaderboard:
         ]
         
         if matched:
-            st.caption(f"找到 **{len(matched)}** 筆符合標的：")
+            st.write(f"找到 **{len(matched)}** 筆符合標的：")
             for m in matched:
                 score = m.get("rs_rating", 50)
                 m_type = m.get("market", "上市/上櫃")
                 name = clean_stock_name(m.get("name", m.get("symbol")), m.get("symbol"))
                 sym = m.get("symbol")
                 raw_score = m.get("score", 0.0)
-                badge_style = get_trend_master_status(m)
+                
+                # 即時算取 RS_ratio
+                _, _, _, _, _, _, query_rs_ratio, query_rs_mom = fetch_stock_and_momentum(sym, m_type, get_tw_now_str("%Y-%m-%d"))
+                m_eval = m.copy()
+                m_eval["rs_ratio"] = query_rs_ratio
+                badge_style = get_trend_master_status(m_eval)
 
-                with st.container(border=True):
-                    st.markdown(f"**{name} ({sym})** ｜ {m_type}")
-                    st.caption(badge_style)
-                    
-                    sq1, sq2 = st.columns(2)
-                    sq1.metric("RS分數", f"{score} 分")
-                    sq2.metric("綜合得分", f"{raw_score:+.2f}")
-                    st.caption(f"📊 全市場地位：贏過全台 **{score}%** 股票")
+                r_col1, r_col2 = st.columns(2)
+                r_col1.metric("標的", f"{name} ({sym})", m_type)
+                r_col2.metric("RS Rating 評分", f"{score} 分", badge_style)
+
+                r_col3, r_col4 = st.columns(2)
+                r_col3.metric("RS_ratio 比率", f"{query_rs_ratio}", f"{'大盤領先者' if query_rs_ratio>=100 else '大盤落後者'}")
+                r_col4.metric("綜合動能得分", f"{raw_score:+.2f}", f"RS動能: {query_rs_mom}")
+                st.divider()
         else:
-            st.warning(f"查無「{search_query}」，請確認代號或名稱。")
+            st.error(f"查無符合「{search_query}」的標的，請確認代號或名稱是否正確。")
 
-    st.divider()
-    st.subheader("🏆 RS 領袖強勢排行榜")
+    st.subheader("🏆 全市場 RS ≥ 75 領袖股強勢排行榜")
     
     df_raw = pd.DataFrame(market_rankings)
     if not df_raw.empty:
@@ -513,9 +578,9 @@ with tab_leaderboard:
 
         f1, f2 = st.columns(2)
         with f1:
-            min_rs = st.number_input("最低 RS 門檻", min_value=1, max_value=99, value=75, step=1)
+            min_rs = st.number_input("最低 RS 門檻篩選", min_value=1, max_value=99, value=75, step=1)
         with f2:
-            market_filter = st.multiselect("市場篩選", ["上市", "上櫃"], default=["上市", "上櫃"])
+            market_filter = st.multiselect("市場別篩選", ["上市", "上櫃"], default=["上市", "上櫃"])
 
         filtered_df = df_raw[
             (df_raw["rs_rating"] >= min_rs) & 
@@ -524,22 +589,22 @@ with tab_leaderboard:
 
         filtered_df["name"] = filtered_df.apply(lambda r: clean_stock_name(r.get("name"), r.get("symbol")), axis=1)
         filtered_df = filtered_df.sort_values(by="rs_rating", ascending=False)
-        filtered_df["狀態"] = filtered_df.apply(get_trend_master_status, axis=1)
+        filtered_df["順勢操作狀態"] = filtered_df.apply(get_trend_master_status, axis=1)
 
-        display_df = filtered_df[["rs_rating", "symbol", "name", "market", "score", "狀態"]].rename(columns={
-            "rs_rating": "RS",
-            "symbol": "代碼",
-            "name": "名稱",
-            "market": "市場",
-            "score": "得分"
+        display_df = filtered_df[["rs_rating", "symbol", "name", "market", "score", "順勢操作狀態"]].rename(columns={
+            "rs_rating": "RS Rating (PR)",
+            "symbol": "股票代碼",
+            "name": "中文名稱",
+            "market": "上市櫃",
+            "score": "綜合動能得分"
         })
 
-        st.caption(f"共 **{len(display_df)}** 檔符合（RS ≥ {min_rs}）：")
+        st.caption(f"共計 **{len(display_df)}** 檔標的符合條件（RS ≥ {min_rs}）：")
         st.dataframe(
             display_df,
             use_container_width=True,
             hide_index=True,
-            height=420
+            height=450
         )
     else:
         st.info("尚無排名資料，請先執行 Actions 排程產生資料。")
