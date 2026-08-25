@@ -61,23 +61,36 @@ def clean_stock_name(name, symbol=None):
     return cleaned if cleaned else raw
 
 # ==========================================
-# 核心數學模組：相對強弱比率 (RS_ratio) 60日/20日雙軸向量運算引擎
+# 核心數學模組：時區清洗與相對強弱 (RS_ratio) 運算引擎
 # ==========================================
+def _clean_date_series(df):
+    """標準化 DataFrame 日期欄位，消除時區異常並轉換為統一 YYYY-MM-DD 格式"""
+    if df is None or df.empty:
+        return pd.DataFrame()
+    d = df.copy()
+    if "Date" not in d.columns:
+        d = d.reset_index()
+    if "Date" in d.columns:
+        date_s = pd.to_datetime(d["Date"])
+        if getattr(date_s.dt, "tz", None) is not None:
+            date_s = date_s.dt.tz_convert("Asia/Taipei").dt.tz_localize(None)
+        d["Date"] = pd.to_datetime(date_s.dt.strftime("%Y-%m-%d"))
+    return d
+
 @st.cache_data(ttl=1800)
 def fetch_benchmark_data(benchmark_symbol="^TWII", period="1y"):
-    """獲取基準指數歷史收盤數據（預設上市 ^TWII 或 上櫃 ^TWOII）"""
-    try:
-        bm = yf.Ticker(benchmark_symbol)
-        df = bm.history(period=period)
-        if df.empty:
-            df = yf.Ticker("0050.TW").history(period=period)
-        if not df.empty:
-            df = df.reset_index()
-            if "Date" in df.columns:
-                df["Date"] = pd.to_datetime(df["Date"]).dt.tz_localize(None)
-            return df[["Date", "Close"]].rename(columns={"Close": "benchmark_close"})
-    except Exception:
-        pass
+    """獲取基準指數歷史收盤數據（若 OTC 指數獲取失敗自動切換為加權指數或 0050）"""
+    candidates = [benchmark_symbol, "^TWII", "0050.TW"]
+    for sym in candidates:
+        try:
+            bm = yf.Ticker(sym)
+            df = bm.history(period=period)
+            if not df.empty and len(df) > 10:
+                df = _clean_date_series(df)
+                if "Close" in df.columns:
+                    return df[["Date", "Close"]].rename(columns={"Close": "benchmark_close"})
+        except Exception:
+            continue
     return pd.DataFrame()
 
 def calculate_rs_ratio_series(target_df, benchmark_df, rs_window=60, momentum_window=20, calc_momentum=True):
@@ -85,24 +98,25 @@ def calculate_rs_ratio_series(target_df, benchmark_df, rs_window=60, momentum_wi
     時間架構：60日 SMA 季線基準中軸 ＋ 20日 SMA 月線動能加速度
     """
     try:
-        if target_df.empty or benchmark_df.empty:
+        if target_df is None or target_df.empty or benchmark_df is None or benchmark_df.empty:
             return pd.DataFrame()
 
-        t_df = target_df.copy()
-        if "Date" not in t_df.columns:
-            t_df = t_df.reset_index()
-        t_df["Date"] = pd.to_datetime(t_df["Date"]).dt.tz_localize(None)
+        t_df = _clean_date_series(target_df)
         t_df = t_df[["Date", "Close"]].rename(columns={"Close": "target_close"})
 
-        b_df = benchmark_df.copy()
-        if "Date" not in b_df.columns:
-            b_df = b_df.reset_index()
-        b_df["Date"] = pd.to_datetime(b_df["Date"]).dt.tz_localize(None)
-        if "benchmark_close" not in b_df.columns:
+        b_df = _clean_date_series(benchmark_df)
+        if "benchmark_close" not in b_df.columns and "Close" in b_df.columns:
             b_df = b_df.rename(columns={"Close": "benchmark_close"})
         b_df = b_df[["Date", "benchmark_close"]]
 
+        # 雙向對齊日期
         merged = pd.merge(t_df, b_df, on="Date", how="inner").sort_values("Date").reset_index(drop=True)
+        if len(merged) < 10:
+            merged = pd.merge(t_df, b_df, on="Date", how="outer").sort_values("Date").reset_index(drop=True)
+            merged["target_close"] = merged["target_close"].ffill()
+            merged["benchmark_close"] = merged["benchmark_close"].ffill()
+            merged = merged.dropna(subset=["target_close", "benchmark_close"])
+
         if len(merged) == 0:
             return pd.DataFrame()
 
@@ -112,7 +126,7 @@ def calculate_rs_ratio_series(target_df, benchmark_df, rs_window=60, momentum_wi
         merged["rs_raw"] = (merged["target_close"] / merged["benchmark_close"]) * 100.0
 
         # 60 日 RS 基準中軸線 (RS Baseline 60MA)
-        merged["rs_ma60"] = merged["rs_raw"].rolling(window=rs_window, min_periods=max(1, rs_window // 2)).mean()
+        merged["rs_ma60"] = merged["rs_raw"].rolling(window=rs_window, min_periods=max(1, rs_window // 4)).mean()
 
         # 相對強弱比率 (RS_ratio)
         merged["rs_ratio"] = np.where(
@@ -123,7 +137,7 @@ def calculate_rs_ratio_series(target_df, benchmark_df, rs_window=60, momentum_wi
 
         # 20 日 RS 動能比率 (RS_momentum)
         if calc_momentum:
-            rs_ratio_ma20 = merged["rs_ratio"].rolling(window=momentum_window, min_periods=max(1, momentum_window // 2)).mean()
+            rs_ratio_ma20 = merged["rs_ratio"].rolling(window=momentum_window, min_periods=max(1, momentum_window // 4)).mean()
             merged["rs_momentum"] = np.where(
                 rs_ratio_ma20 > 0,
                 100.0 * (merged["rs_ratio"] / rs_ratio_ma20),
@@ -267,7 +281,7 @@ def get_stock_rs_info(symbol, market_list):
             return item
     return None
 
-def fetch_stock_and_momentum(symbol, market, entry_date_str):
+def fetch_stock_and_momentum(symbol, market, entry_date_str=None):
     is_otc = "TWO" in str(market).upper() or market == "上櫃"
     ticker = f"{symbol}.TWO" if is_otc else f"{symbol}.TW"
     bm_symbol = "^TWOII" if is_otc else "^TWII"
@@ -276,13 +290,20 @@ def fetch_stock_and_momentum(symbol, market, entry_date_str):
         stock = yf.Ticker(ticker)
         df_all = stock.history(period="1y")
         if df_all.empty:
-            return None, None, None, 0.0, 0.0, 0.0, 100.0, 100.0
+            alt_ticker = f"{symbol}.TW" if is_otc else f"{symbol}.TWO"
+            stock = yf.Ticker(alt_ticker)
+            df_all = stock.history(period="1y")
+            if df_all.empty:
+                return None, None, None, 0.0, 0.0, 0.0, 100.0, 100.0
         
         current_price = round(float(df_all["Close"].iloc[-1]), 2)
         
         try:
-            df_entry = df_all.loc[df_all.index >= entry_date_str]
-            max_high = round(float(df_entry["High"].max()), 2) if not df_entry.empty else current_price
+            if entry_date_str:
+                df_entry = df_all.loc[df_all.index.astype(str) >= str(entry_date_str)]
+                max_high = round(float(df_entry["High"].max()), 2) if not df_entry.empty else current_price
+            else:
+                max_high = current_price
         except Exception:
             max_high = current_price
             
@@ -295,9 +316,6 @@ def fetch_stock_and_momentum(symbol, market, entry_date_str):
 
         # 60日季線基準與20日月動能雙軸運算
         benchmark_df = fetch_benchmark_data(bm_symbol, period="1y")
-        if benchmark_df.empty and is_otc:
-            benchmark_df = fetch_benchmark_data("^TWII", period="1y")
-
         rs_calc_df = calculate_rs_ratio_series(df_all, benchmark_df, rs_window=60, momentum_window=20, calc_momentum=True)
         
         if not rs_calc_df.empty and "rs_ratio" in rs_calc_df.columns:
@@ -568,7 +586,9 @@ with tab_leaderboard:
                 sym = m.get("symbol")
                 raw_score = m.get("score", 0.0)
                 
-                _, _, _, _, _, _, query_rs_ratio, query_rs_mom = fetch_stock_and_momentum(sym, m_type, get_tw_now_str("%Y-%m-%d"))
+                with st.spinner(f"正在即時運算 {name} ({sym}) 的雙軸動能數據..."):
+                    _, _, _, _, _, _, query_rs_ratio, query_rs_mom = fetch_stock_and_momentum(sym, m_type, get_tw_now_str("%Y-%m-%d"))
+                
                 m_eval = m.copy()
                 m_eval["rs_ratio"] = query_rs_ratio
                 badge_style = get_trend_master_status(m_eval)
@@ -579,7 +599,7 @@ with tab_leaderboard:
 
                 r_col3, r_col4 = st.columns(2)
                 r_col3.metric("RS_ratio (60MA)", f"{query_rs_ratio}", f"{'🔥 大盤領先者' if query_rs_ratio>=100 else '❄️ 大盤落後者'}")
-                r_col4.metric("綜合動能得分", f"{raw_score:+.2f}", f"動能比: {query_rs_mom}")
+                r_col4.metric("綜合動能得分", f"{raw_score:+.2f}", f"動能比 (20MA): {query_rs_mom}")
                 st.divider()
         else:
             st.error(f"查無符合「{search_query}」的標的，請確認代號或名稱是否正確。")
@@ -614,7 +634,7 @@ with tab_leaderboard:
 
         display_df = filtered_df[["rs_rating", "symbol", "name", "market", "score", "rs_ratio", "rs_momentum", "順勢操作狀態"]].rename(columns={
             "rs_rating": "RS Rating (PR)",
-            "symbol": "股票代碼",
+            "股票代碼": "股票代碼",
             "name": "中文名稱",
             "market": "上市櫃",
             "score": "綜合動能得分",
