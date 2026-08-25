@@ -493,7 +493,7 @@ with tab_portfolio:
 
                 c5, c6 = st.columns(2)
                 stop_label = "🛡️ 保本停損線" if is_breakeven_active else f"🔴 初始停損 (-{stop_loss_pct}%)"
-                c5.metric(stop_label, f"${effective_stop_prrice}")
+                c5.metric(stop_label, f"${effective_stop_price}")
                 c6.metric("累積已實現損益", f"{realized_pnl:+,} 元")
 
                 st.markdown(f"**風控狀態：** :{status_color}[{status_text}]")
