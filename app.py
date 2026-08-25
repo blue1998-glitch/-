@@ -1,4 +1,3 @@
-import streamlit as pd_st
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -62,11 +61,11 @@ def clean_stock_name(name, symbol=None):
     return cleaned if cleaned else raw
 
 # ==========================================
-# 核心數學模組：相對強弱比率 (RS_ratio) 向量運算引擎
+# 核心數學模組：相對強弱比率 (RS_ratio) 60日/20日雙軸向量運算引擎
 # ==========================================
 @st.cache_data(ttl=1800)
 def fetch_benchmark_data(benchmark_symbol="^TWII", period="1y"):
-    """獲取基準指數（預設台股加權指數 ^TWII）歷史收盤數據"""
+    """獲取基準指數歷史收盤數據（預設上市 ^TWII 或 上櫃 ^TWOII）"""
     try:
         bm = yf.Ticker(benchmark_symbol)
         df = bm.history(period=period)
@@ -81,9 +80,9 @@ def fetch_benchmark_data(benchmark_symbol="^TWII", period="1y"):
         pass
     return pd.DataFrame()
 
-def calculate_rs_ratio_series(target_df, benchmark_df, rs_window=50, momentum_window=10, calc_momentum=True):
+def calculate_rs_ratio_series(target_df, benchmark_df, rs_window=60, momentum_window=20, calc_momentum=True):
     """
-    符合規格書之標準化與動能化 RS_ratio 向量化運算函式
+    時間架構升級：60日 SMA 季線基準中軸 ＋ 20日 SMA 月線動能加速度
     """
     try:
         if target_df.empty or benchmark_df.empty:
@@ -112,26 +111,26 @@ def calculate_rs_ratio_series(target_df, benchmark_df, rs_window=50, momentum_wi
         # 2.1 基礎相對強弱線 (Raw RS Line)
         merged["rs_raw"] = (merged["target_close"] / merged["benchmark_close"]) * 100.0
 
-        # 2.2 RS 移動平均基準線 (RS Baseline MA)
-        merged["rs_ma"] = merged["rs_raw"].rolling(window=rs_window, min_periods=rs_window).mean()
+        # 2.2 60 日 RS 基準中軸線 (RS Baseline 60MA)
+        merged["rs_ma60"] = merged["rs_raw"].rolling(window=rs_window, min_periods=max(1, rs_window // 2)).mean()
 
-        # 2.3 相對強弱比率 (RS_ratio) - 防呆除以零
+        # 2.3 相對強弱比率 (RS_ratio)
         merged["rs_ratio"] = np.where(
-            merged["rs_ma"] > 0,
-            100.0 * (merged["rs_raw"] / merged["rs_ma"]),
-            np.nan
+            merged["rs_ma60"] > 0,
+            100.0 * (merged["rs_raw"] / merged["rs_ma60"]),
+            100.0
         )
 
-        # 2.4 可選擴充：RS 動能比率 (RS_momentum)
+        # 2.4 20 日 RS 動能比率 (RS_momentum)
         if calc_momentum:
-            rs_ratio_ma = merged["rs_ratio"].rolling(window=momentum_window, min_periods=momentum_window).mean()
+            rs_ratio_ma20 = merged["rs_ratio"].rolling(window=momentum_window, min_periods=max(1, momentum_window // 2)).mean()
             merged["rs_momentum"] = np.where(
-                rs_ratio_ma > 0,
-                100.0 * (merged["rs_ratio"] / rs_ratio_ma),
-                np.nan
+                rs_ratio_ma20 > 0,
+                100.0 * (merged["rs_ratio"] / rs_ratio_ma20),
+                100.0
             )
         else:
-            merged["rs_momentum"] = np.nan
+            merged["rs_momentum"] = 100.0
 
         merged = merged.rename(columns={"Date": "date"})
         return merged
@@ -139,15 +138,26 @@ def calculate_rs_ratio_series(target_df, benchmark_df, rs_window=50, momentum_wi
         return pd.DataFrame()
 
 # ==========================================
-# 順勢大師操作法則：動能狀態分類引擎
+# 順勢大師操作法則：動能狀態分類引擎（完整前綴修復）
 # ==========================================
 def get_trend_master_status(row):
-    rs = row.get("rs_rating", 50)
+    try:
+        rs = float(row.get("rs_rating", 50))
+    except Exception:
+        rs = 50.0
     badge = str(row.get("pattern_badge", ""))
-    r_5d = row.get("r_5d", 0.0)
-    rs_ratio = row.get("rs_ratio", None)
+    try:
+        r_5d = float(row.get("r_5d", 0.0))
+    except Exception:
+        r_5d = 0.0
     
-    prefix = "🔥[強勢] " if rs_ratio is not None and rs_ratio >= 100 else ("❄️[弱勢] " if rs_ratio is not None else "")
+    rs_ratio_val = row.get("rs_ratio", 100.0)
+    try:
+        rs_ratio = float(rs_ratio_val) if rs_ratio_val is not None else 100.0
+    except Exception:
+        rs_ratio = 100.0
+    
+    prefix = "🔥[強勢] " if rs_ratio >= 100.0 else "❄️[弱勢] "
     
     if rs >= 95:
         if "新高" in badge or r_5d >= 10.0:
@@ -243,6 +253,10 @@ def load_market_data():
 
     for item in raw_list:
         item["name"] = clean_stock_name(item.get("name"), item.get("symbol"))
+        if "rs_ratio" not in item:
+            item["rs_ratio"] = 100.0
+        if "rs_momentum" not in item:
+            item["rs_momentum"] = 100.0
 
     return raw_list, status_msg
 
@@ -254,12 +268,15 @@ def get_stock_rs_info(symbol, market_list):
     return None
 
 def fetch_stock_and_momentum(symbol, market, entry_date_str):
-    ticker = f"{symbol}.TWO" if "TWO" in str(market).upper() or market == "上櫃" else f"{symbol}.TW"
+    is_otc = "TWO" in str(market).upper() or market == "上櫃"
+    ticker = f"{symbol}.TWO" if is_otc else f"{symbol}.TW"
+    bm_symbol = "^TWOII" if is_otc else "^TWII"
+
     try:
         stock = yf.Ticker(ticker)
         df_all = stock.history(period="1y")
         if df_all.empty:
-            return None, None, None, 0.0, 0.0, 0.0, 0.0, 0.0
+            return None, None, None, 0.0, 0.0, 0.0, 100.0, 100.0
         
         current_price = round(float(df_all["Close"].iloc[-1]), 2)
         
@@ -276,15 +293,18 @@ def fetch_stock_and_momentum(symbol, market, entry_date_str):
         r_1m = round(((closes.iloc[-1] - closes.iloc[-21]) / closes.iloc[-21]) * 100, 2) if len(closes) >= 21 else r_5d
         r_1q = round(((closes.iloc[-1] - closes.iloc[-61]) / closes.iloc[-61]) * 100, 2) if len(closes) >= 61 else r_1m
 
-        # RS_ratio 計算
-        benchmark_df = fetch_benchmark_data("^TWII", period="1y")
-        rs_calc_df = calculate_rs_ratio_series(df_all, benchmark_df, rs_window=50, momentum_window=10, calc_momentum=True)
+        # 60日季線基準與20日月動能雙軸運算
+        benchmark_df = fetch_benchmark_data(bm_symbol, period="1y")
+        if benchmark_df.empty and is_otc:
+            benchmark_df = fetch_benchmark_data("^TWII", period="1y")
+
+        rs_calc_df = calculate_rs_ratio_series(df_all, benchmark_df, rs_window=60, momentum_window=20, calc_momentum=True)
         
         if not rs_calc_df.empty and "rs_ratio" in rs_calc_df.columns:
-            latest_ratio = rs_calc_df["rs_ratio"].dropna().iloc[-1] if not rs_calc_df["rs_ratio"].dropna().empty else 100.0
-            latest_mom = rs_calc_df["rs_momentum"].dropna().iloc[-1] if not rs_calc_df["rs_momentum"].dropna().empty else 100.0
-            rs_ratio_val = round(float(latest_ratio), 2)
-            rs_mom_val = round(float(latest_mom), 2)
+            valid_ratio = rs_calc_df["rs_ratio"].dropna()
+            valid_mom = rs_calc_df["rs_momentum"].dropna()
+            rs_ratio_val = round(float(valid_ratio.iloc[-1]), 2) if not valid_ratio.empty else 100.0
+            rs_mom_val = round(float(valid_mom.iloc[-1]), 2) if not valid_mom.empty else 100.0
         else:
             rs_ratio_val = 100.0
             rs_mom_val = 100.0
@@ -311,8 +331,8 @@ market_rankings, db_status = load_market_data()
 
 st.title("🚀 台股動能 RS 領袖排行與風控儀表板")
 
-with st.expander("🛡️ 系統五大自動化量化風控與 RS_ratio 說明", expanded=False):
-    st.markdown("**RS_ratio 說明**：以加權指數為基準，大於 100 為超越大盤的強勢領袖股，小於 100 為落後弱勢股。")
+with st.expander("🛡️ 系統五大自動化量化風控與 RS_ratio（60日中軸/20日動能）說明", expanded=False):
+    st.markdown("**RS_ratio 雙軸指標**：以 60 日季線為強弱中軸（≥100 為 🔥[強勢]，<100 為 ❄️[弱勢]）；以 20 日 SMA 為短線動能加速度。")
     r1, r2 = st.columns(2)
     with r1:
         st.markdown("**1. 🔴 初始停損**：跌破預設趴數無條件停損。")
@@ -457,8 +477,8 @@ with tab_portfolio:
                 
                 # 行動端 2 欄排版：動能指標
                 m1, m2 = st.columns(2)
-                m1.metric("RS_ratio 比率 (50MA)", f"{rs_ratio_val}", f"{'優於大盤' if rs_ratio_val>=100 else '劣於大盤'}")
-                m2.metric("RS Rating 評分", f"{rs_score} 分", f"動能: {rs_mom_val}")
+                m1.metric("RS_ratio 比率 (60MA)", f"{rs_ratio_val}", f"{'🔥 超越大盤' if rs_ratio_val>=100 else '❄️ 落後大盤'}")
+                m2.metric("RS Rating 評分", f"{rs_score} 分", f"動能比: {rs_mom_val}")
 
                 m3, m4 = st.columns(2)
                 m3.metric("近 5 日動能", f"{r_5d:+}%")
@@ -531,7 +551,7 @@ with tab_portfolio:
 # 分頁 2：全市場 RS 排行榜與個股查詢
 # ==========================================
 with tab_leaderboard:
-    st.subheader("🔍 萬用個股 RS & RS_ratio 評分查詢")
+    st.subheader("🔍 萬用個股 RS & RS_ratio（60MA/20MA）評分查詢")
     search_query = st.text_input("輸入股票代號或名稱查詢（例如：2330、聯一光、3441）", placeholder="請輸入代號或名稱...")
     
     if search_query:
@@ -550,7 +570,7 @@ with tab_leaderboard:
                 sym = m.get("symbol")
                 raw_score = m.get("score", 0.0)
                 
-                # 即時算取 RS_ratio
+                # 即時算取 60日/20日 雙軸 RS_ratio
                 _, _, _, _, _, _, query_rs_ratio, query_rs_mom = fetch_stock_and_momentum(sym, m_type, get_tw_now_str("%Y-%m-%d"))
                 m_eval = m.copy()
                 m_eval["rs_ratio"] = query_rs_ratio
@@ -561,8 +581,8 @@ with tab_leaderboard:
                 r_col2.metric("RS Rating 評分", f"{score} 分", badge_style)
 
                 r_col3, r_col4 = st.columns(2)
-                r_col3.metric("RS_ratio 比率", f"{query_rs_ratio}", f"{'大盤領先者' if query_rs_ratio>=100 else '大盤落後者'}")
-                r_col4.metric("綜合動能得分", f"{raw_score:+.2f}", f"RS動能: {query_rs_mom}")
+                r_col3.metric("RS_ratio (60MA)", f"{query_rs_ratio}", f"{'🔥 大盤領先者' if query_rs_ratio>=100 else '❄️ 大盤落後者'}")
+                r_col4.metric("綜合動能得分", f"{raw_score:+.2f}", f"動能比: {query_rs_mom}")
                 st.divider()
         else:
             st.error(f"查無符合「{search_query}」的標的，請確認代號或名稱是否正確。")
@@ -574,7 +594,11 @@ with tab_leaderboard:
         if "name" not in df_raw.columns:
             df_raw["name"] = df_raw["symbol"]
         if "market" not in df_raw.columns:
-            df_raw["market"] = "台股"
+            df_raw["market"] = "上市"
+        if "rs_ratio" not in df_raw.columns:
+            df_raw["rs_ratio"] = 100.0
+        if "rs_momentum" not in df_raw.columns:
+            df_raw["rs_momentum"] = 100.0
 
         f1, f2 = st.columns(2)
         with f1:
@@ -591,12 +615,14 @@ with tab_leaderboard:
         filtered_df = filtered_df.sort_values(by="rs_rating", ascending=False)
         filtered_df["順勢操作狀態"] = filtered_df.apply(get_trend_master_status, axis=1)
 
-        display_df = filtered_df[["rs_rating", "symbol", "name", "market", "score", "順勢操作狀態"]].rename(columns={
+        display_df = filtered_df[["rs_rating", "symbol", "name", "market", "score", "rs_ratio", "rs_momentum", "順勢操作狀態"]].rename(columns={
             "rs_rating": "RS Rating (PR)",
             "symbol": "股票代碼",
             "name": "中文名稱",
             "market": "上市櫃",
-            "score": "綜合動能得分"
+            "score": "綜合動能得分",
+            "rs_ratio": "RS_ratio (60MA)",
+            "rs_momentum": "RS動能 (20MA)"
         })
 
         st.caption(f"共計 **{len(display_df)}** 檔標的符合條件（RS ≥ {min_rs}）：")
