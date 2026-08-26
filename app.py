@@ -607,7 +607,7 @@ with tab_portfolio:
 
     portfolio = load_data()
 
-    with st.expander("➕ 新增持股 / 建倉", expanded=False):
+    with st.expander("➕ 新增持股", expanded=False):
         with st.form("add_stock_form"):
             fc1, fc2 = st.columns(2)
             with fc1:
@@ -644,7 +644,7 @@ with tab_portfolio:
     if not portfolio:
         st.info("目前尚無持倉，請點擊上方「➕ 新增持股」建立第一檔股票。")
     else:
-        if st.button("🔄 刷新最新市價與動能評分", use_container_width=True):
+        if st.button("🔄 刷新資料", use_container_width=True):
             st.cache_data.clear()
             st.session_state.last_portfolio_refresh = get_tw_now_str()
             st.rerun()
@@ -723,7 +723,7 @@ with tab_portfolio:
                 row1_2.metric(
                     "RS動能比率(20MA)", 
                     f"{rs_mom_val}", 
-                    "🔥 短期動能增強" if rs_mom_val >= 100 else "❄️ 短期動能減弱"
+                    "🔥 短期動能增強" if rs_mom_val >= 100 else "❄️ 動能未達臨界點"
                 )
 
                 # 3. RS_ratio 比率 (60MA) ＆ 4. 近 5 日動能
