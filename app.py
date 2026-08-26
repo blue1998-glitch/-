@@ -389,32 +389,21 @@ def calc_pnl(shares, avg_cost, current_price, fee_discount):
 # 騰落進階指標演算法與背離偵測引擎
 # ==========================================
 def calculate_advanced_ad_indicators(df_input, n_window=20):
-    """
-    輸入需求格式 DataFrame:
-    date, close, advances, declines, unchanged
-    """
     df = df_input.copy()
     
-    # 指標 A：滾動騰落比率 (Rolling AD Ratio %)
-    # 公式：過去 N 日（預設 N=20）累計上漲家數 / (累計上漲 + 累計下跌) * 100%
     roll_adv = df["advances"].rolling(n_window, min_periods=5).sum()
     roll_dec = df["declines"].rolling(n_window, min_periods=5).sum()
     tot_active = roll_adv + roll_dec
     df["rolling_ad_ratio"] = np.where(tot_active > 0, (roll_adv / tot_active) * 100.0, 50.0).round(2)
 
-    # 指標 B：麥克連震盪指標 (McClellan Oscillator)
-    # 定義：Net Advances = advances - declines
-    # 公式：EMA_19(Net Advances) - EMA_39(Net Advances)
     df["net_advances"] = df["advances"] - df["declines"]
     df["ema_19"] = df["net_advances"].ewm(span=19, adjust=False).mean()
     df["ema_39"] = df["net_advances"].ewm(span=39, adjust=False).mean()
     df["mcclellan_osc"] = (df["ema_19"] - df["ema_39"]).round(2)
 
-    # 背離偵測邏輯（頂部/底部背離，視窗 20 日）
     roll_high_close = df["close"].rolling(n_window, min_periods=5).max()
     roll_low_close = df["close"].rolling(n_window, min_periods=5).min()
     
-    # 頂部背離：大盤創波段新高，但 滾動 AD 比率或麥克連指標 未創 20 日新高反而走低
     roll_high_ad = df["rolling_ad_ratio"].rolling(n_window, min_periods=5).max()
     roll_high_mcc = df["mcclellan_osc"].rolling(n_window, min_periods=5).max()
     
@@ -424,7 +413,6 @@ def calculate_advanced_ad_indicators(df_input, n_window=20):
     
     df["bearish_divergence"] = is_close_new_high & (is_ad_not_high | is_mcc_not_high)
 
-    # 底部背離：大盤創波段新低，但 廣度指標未創新低且率先墊高
     roll_low_ad = df["rolling_ad_ratio"].rolling(n_window, min_periods=5).min()
     roll_low_mcc = df["mcclellan_osc"].rolling(n_window, min_periods=5).min()
 
@@ -450,7 +438,6 @@ def compute_market_breadth_data(market_list, mkt_filter="TW"):
                 ticker = f"{sym}.TWO" if m_type == "TWO" else f"{sym}.TW"
                 filtered_symbols.append(ticker)
 
-    # 取得對應大盤指數收盤資料
     bm_sym = "^TWII" if mkt_filter == "TW" else "^TWOII"
     try:
         bm_ticker = yf.Ticker(bm_sym)
@@ -496,13 +483,11 @@ def compute_market_breadth_data(market_list, mkt_filter="TW"):
     ma120 = closes.rolling(120, min_periods=20).mean()
     ma240 = closes.rolling(240, min_periods=30).mean()
 
-    # 1. 均線覆蓋率
     total_valid = closes.notna().sum(axis=1).replace(0, np.nan)
     above_20ma = ((closes > ma20).sum(axis=1) / total_valid * 100).round(2)
     above_60ma = ((closes > ma60).sum(axis=1) / total_valid * 100).round(2)
     above_240ma = ((closes > ma240).sum(axis=1) / total_valid * 100).round(2)
 
-    # 2. 創新高 / 創新低 (52週 / 240日)
     roll_max_240 = highs.rolling(240, min_periods=30).max()
     roll_min_240 = lows.rolling(240, min_periods=30).min()
 
@@ -514,16 +499,13 @@ def compute_market_breadth_data(market_list, mkt_filter="TW"):
     new_high_ratio = (new_high_count / total_valid * 100).round(2)
     new_low_ratio = (new_low_count / total_valid * 100).round(2)
 
-    # 3. 新高新低差
     net_high_low = new_high_count - new_low_count
 
-    # 4. 漲跌平家數
     diff = closes.diff()
     advances = (diff > 0).sum(axis=1)
     declines = (diff < 0).sum(axis=1)
     unchanged = (diff == 0).sum(axis=1)
 
-    # 5. 多頭排列比例
     short_bull = ((closes > ma20) & (ma20 > ma60)).sum(axis=1)
     short_bull_ratio = (short_bull / total_valid * 100).round(2)
 
@@ -532,7 +514,6 @@ def compute_market_breadth_data(market_list, mkt_filter="TW"):
 
     base_dates = closes.index.strftime("%Y-%m-%d").tolist()
     
-    # 整合大盤指數收盤價
     dates_idx = pd.to_datetime(base_dates)
     if not bm_clean.empty and "Close" in bm_clean.columns:
         bm_aligned = bm_clean["Close"].reindex(dates_idx).ffill().bfill()
@@ -548,10 +529,8 @@ def compute_market_breadth_data(market_list, mkt_filter="TW"):
         "unchanged": unchanged.values
     })
 
-    # 計算進階騰落指標與背離訊號
     ad_calc = calculate_advanced_ad_indicators(raw_ad_df, n_window=20)
 
-    # 計算大盤現價與 60MA 季線距離 (%)
     bm_series = pd.Series(ad_calc["close"].values)
     bm_ma60 = bm_series.rolling(60, min_periods=5).mean()
     dist_60ma_pct = (((bm_series - bm_ma60) / bm_ma60) * 100.0).round(2).values
@@ -737,26 +716,41 @@ with tab_portfolio:
                 st.divider()
                 st.subheader(f"{name} ({sym}.{mkt}) ｜ 📦 {shares:,} 股 ｜ {status_badge}")
                 
-                m1, m2 = st.columns(2)
-                m1.metric("RS_ratio 比率 (60MA)", f"{rs_ratio_val}", f"{'🔥 超越大盤' if rs_ratio_val>=100 else '❄️ 落後大盤'}")
-                m2.metric("RS Rating 評分", f"{rs_score} 分", f"動能比: {rs_mom_val}")
+                # 按照指定順序顯示 12 大指標卡 (每行 2 個)
+                # 1. RS Rating 評分 ＆ 2. RS動能比率(20MA)
+                row1_1, row1_2 = st.columns(2)
+                row1_1.metric("RS Rating 評分", f"{rs_score} 分")
+                row1_2.metric(
+                    "RS動能比率(20MA)", 
+                    f"{rs_mom_val}", 
+                    "🔥 短期動能增強" if rs_mom_val >= 100 else "❄️ 短期動能減弱"
+                )
 
-                m3, m4 = st.columns(2)
-                m3.metric("近 5 日動能", f"{r_5d:+}%")
-                m4.metric("近 1 個月動能", f"{r_1m:+}%")
+                # 3. RS_ratio 比率 (60MA) ＆ 4. 近 5 日動能
+                row2_1, row2_2 = st.columns(2)
+                row2_1.metric("RS_ratio 比率 (60MA)", f"{rs_ratio_val}", f"{'🔥 超越大盤' if rs_ratio_val>=100 else '❄️ 落後大盤'}")
+                row2_2.metric("近 5 日動能", f"{r_5d:+}%")
 
-                c1, c2 = st.columns(2)
-                c1.metric("最新市價", f"${cur_price}")
-                c2.metric("未實現損益", f"{net_pnl:+,} 元", f"{roi:+}%")
+                # 5. 近20日動能 ＆ 6. 近60日動能
+                row3_1, row3_2 = st.columns(2)
+                row3_1.metric("近 20 日動能", f"{r_1m:+}%")
+                row3_2.metric("近 60 日動能", f"{r_1q:+}%")
 
-                c3, c4 = st.columns(2)
-                c3.metric("剩餘股數 / 均價", f"{shares:,} 股", f"均價: ${avg_cost}")
-                c4.metric("高點回檔", f"${actual_high}", f"-{pullback_pct}%")
+                # 7. 高點回檔 ＆ 8. 最新市價
+                row4_1, row4_2 = st.columns(2)
+                row4_1.metric("高點回檔", f"${actual_high}", f"-{pullback_pct}%")
+                row4_2.metric("最新市價", f"${cur_price}")
 
-                c5, c6 = st.columns(2)
+                # 9. 剩餘股數/均價 ＆ 10. 未實現損益
+                row5_1, row5_2 = st.columns(2)
+                row5_1.metric("剩餘股數 / 均價", f"{shares:,} 股", f"均價: ${avg_cost}")
+                row5_2.metric("未實現損益", f"{net_pnl:+,} 元", f"{roi:+}%")
+
+                # 11. 累積已實現損益 ＆ 12. 停損停利線
+                row6_1, row6_2 = st.columns(2)
+                row6_1.metric("累積已實現損益", f"{realized_pnl:+,} 元")
                 stop_label = "🛡️ 保本停損線" if is_breakeven_active else f"🔴 初始停損 (-{stop_loss_pct}%)"
-                c5.metric(stop_label, f"${effective_stop_price}")
-                c6.metric("累積已實現損益", f"{realized_pnl:+,} 元")
+                row6_2.metric(stop_label, f"${effective_stop_price}")
 
                 st.markdown(f"**風控狀態：** :{status_color}[{status_text}]")
 
@@ -830,18 +824,31 @@ with tab_leaderboard:
                 sym = m.get("symbol")
                 raw_score = m.get("score", 0.0)
                 
-                _, _, _, _, _, _, query_rs_ratio, query_rs_mom = fetch_stock_and_momentum(sym, m_type, get_tw_now_str("%Y-%m-%d"))
+                _, _, _, q_r5, q_r20, q_r60, query_rs_ratio, query_rs_mom = fetch_stock_and_momentum(sym, m_type, get_tw_now_str("%Y-%m-%d"))
                 m_eval = m.copy()
                 m_eval["rs_ratio"] = query_rs_ratio
                 badge_style = get_trend_master_status(m_eval)
 
+                # 個股查詢結果卡片排列
+                r_col0 = st.columns(1)[0]
+                r_col0.metric("標的與市場", f"{name} ({sym})", f"{m_type} ｜ {badge_style}")
+
                 r_col1, r_col2 = st.columns(2)
-                r_col1.metric("標的", f"{name} ({sym})", m_type)
-                r_col2.metric("RS Rating 評分", f"{score} 分", badge_style)
+                r_col1.metric("RS Rating 評分", f"{score} 分")
+                r_col2.metric(
+                    "RS動能比率(20MA)", 
+                    f"{query_rs_mom}", 
+                    "🔥 短期動能增強" if query_rs_mom >= 100 else "❄️ 短期動能減弱"
+                )
 
                 r_col3, r_col4 = st.columns(2)
                 r_col3.metric("RS_ratio (60MA)", f"{query_rs_ratio}", f"{'🔥 大盤領先者' if query_rs_ratio>=100 else '❄️ 大盤落後者'}")
-                r_col4.metric("綜合動能得分", f"{raw_score:+.2f}", f"動能比 (20MA): {query_rs_mom}")
+                r_col4.metric("近 5 日動能", f"{q_r5:+}%")
+
+                r_col5, r_col6 = st.columns(2)
+                r_col5.metric("近 20 日動能", f"{q_r20:+}%")
+                r_col6.metric("近 60 日動能", f"{q_r60:+}%")
+
                 st.divider()
         else:
             st.error(f"查無符合「{search_query}」的標的，請確認代號或名稱是否正確。")
@@ -881,7 +888,7 @@ with tab_leaderboard:
             "market": "上市櫃",
             "score": "綜合動能得分",
             "rs_ratio": "RS_ratio (60MA)",
-            "rs_momentum": "RS動能 (20MA)"
+            "rs_momentum": "RS動能比率(20MA)"
         })
 
         st.caption(f"共計 **{len(display_df)}** 檔標的符合條件（RS ≥ {min_rs}）：")
@@ -982,13 +989,11 @@ with tab_market_breadth:
             )
         )
 
-        # 上圖：大盤指數收盤線與背離標記
         fig3.add_trace(
             go.Scatter(x=plot_df.index, y=plot_df["close"], mode="lines", name="大盤指數收盤", line=dict(color="#212121", width=2)),
             row=1, col=1
         )
         
-        # 標註頂部與底部背離點
         bear_pts = plot_df[plot_df["bearish_divergence"]]
         bull_pts = plot_df[plot_df["bullish_divergence"]]
 
@@ -1003,7 +1008,6 @@ with tab_market_breadth:
                 row=1, col=1
             )
 
-        # 中圖：20 日滾動騰落比率 (Rolling AD Ratio)
         fig3.add_trace(
             go.Scatter(x=plot_df.index, y=plot_df["rolling_ad_ratio"], mode="lines", name="滾動 AD 比率 (%)", line=dict(color="#673AB7", width=2.2)),
             row=2, col=1
@@ -1012,7 +1016,6 @@ with tab_market_breadth:
         fig3.add_hline(y=50, line_dash="dot", line_color="gray", annotation_text="50% 多空中軸", annotation_position="top right", row=2, col=1)
         fig3.add_hline(y=25, line_dash="dash", line_color="#00BCD4", annotation_text="25% 冰凍超賣", annotation_position="bottom right", row=2, col=1)
 
-        # 下圖：麥克連震盪指標 (McClellan Oscillator)
         mcc_colors = ["#F44336" if v >= 0 else "#4CAF50" for v in plot_df["mcclellan_osc"]]
         fig3.add_trace(
             go.Bar(x=plot_df.index, y=plot_df["mcclellan_osc"], name="McClellan 震盪動能", marker_color=mcc_colors),
