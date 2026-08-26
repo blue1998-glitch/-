@@ -566,9 +566,9 @@ def compute_market_breadth_data(market_list, mkt_filter="TW"):
 # ==========================================
 market_rankings, db_status = load_market_data()
 
-st.title("🚀 台股動能 RS 領袖排行與風控儀表板")
+st.title("🚀 台股儀表板")
 
-with st.expander("🛡️ 系統五大自動化量化風控與 RS_ratio（60日中軸/20日動能）說明", expanded=False):
+with st.expander("🛡️ 說明", expanded=False):
     st.markdown("**RS_ratio 雙軸指標**：以 60 日季線為強弱中軸（≥100 為 🔥[強勢]，<100 為 ❄️[弱勢]）；以 20 日 SMA 為短線動能加速度。")
     r1, r2 = st.columns(2)
     with r1:
@@ -585,16 +585,16 @@ else:
     st.warning("🟡 正在等待全市場 RS 排名資料載入...")
 
 tab_portfolio, tab_leaderboard, tab_market_breadth = st.tabs([
-    "📈 個人持倉風控監控", 
-    "🏆 全市場 RS 排行榜 & 萬用個股查詢",
-    "📊 全市場大盤寬度指標"
+    "📈 獲利監控系統", 
+    "🏆 個股查詢",
+    "📊 大盤"
 ])
 
 # ==========================================
-# 分頁 1：個人持倉風控監控儀表板
+# 分頁 1：個人持股
 # ==========================================
 with tab_portfolio:
-    with st.expander("⚙️ 風控與動能參數設定", expanded=False):
+    with st.expander("⚙️ 參數設定", expanded=False):
         c1, c2 = st.columns(2)
         with c1:
             stop_loss_pct = st.number_input("🔴 初始停損趴數 (%)", min_value=1.0, max_value=50.0, value=7.0, step=0.5, format="%.1f")
