@@ -12,8 +12,8 @@ get_tw_now_str = lambda fmt="%Y-%m-%d %H:%M:%S": get_tw_now().strftime(fmt)
 
 if "last_portfolio_refresh" not in st.session_state:
     st.session_state.last_portfolio_refresh = get_tw_now_str()
-if "target_search_query" not in st.session_state:
-    st.session_state.target_search_query = ""
+if "search_kw" not in st.session_state:
+    st.session_state.search_kw = ""
 
 def _load_names():
     try:
@@ -329,8 +329,8 @@ with tab_portfolio:
                 sym_clean = clean_sym(sym)
                 clean_n = clean_stock_name(name.strip(), sym_clean) if name else clean_stock_name(sym_clean, sym_clean)
                 portfolio.append({
-                    "symbol": sym_clean, "name": clean_n, "market": "TWO" if "TW" in mkt else "TW",
-                    "entry_date": str(entry_d), "avg_cost": float(price), "shares": int(shs),
+                    "symbol": sym_clean, "name": clean_n, "market": "TWO" if "TWO" in mkt else "TW",
+                "entry_date": str(entry_d), "avg_cost": float(price), "shares": int(shs),
                     "record_high": float(price), "realized_pnl": 0.0, "status_override": "",
                     "history": [make_log_entry("🌱 初始建倉", price, f"+{int(shs)}", int(shs), "0 元", f"起始成本 ${price}")]
                 })
@@ -458,13 +458,16 @@ with tab_portfolio:
 
 with tab_leaderboard:
     st.subheader("🔍 個股查詢")
-    search_query = st.text_input("輸入股票代號或名稱查詢（支援單檔或多檔，多檔請用空白、逗號或換行分隔）", value=st.session_state.target_search_query, placeholder="例如：2330 聯一光 3441 2454", key="search_input_box")
-    if search_query != st.session_state.target_search_query:
-        st.session_state.target_search_query = search_query
     
-    if search_query:
+    def on_search_change():
+        st.session_state.search_kw = st.session_state.search_box_input
+
+    search_query = st.text_input("輸入股票代號或名稱查詢（支援單檔或多檔，多檔請用空白、逗號或換行分隔）", value=st.session_state.search_kw, placeholder="例如：2330 聯一光 3441 2454", key="search_box_input", on_change=on_search_change)
+    active_search = search_query.strip() or st.session_state.search_kw.strip()
+    
+    if active_search:
         matched_dict = {}
-        for tok in [t.strip() for t in re.split(r"[\s,;，、\n]+", search_query) if t.strip()]:
+        for tok in [t.strip() for t in re.split(r"[\s,;，、\n]+", active_search) if t.strip()]:
             q_token = clean_sym(tok).upper()
             found = False
             for item in market_rankings:
@@ -502,7 +505,7 @@ with tab_leaderboard:
                     (("近 20 日動能", f"{d['q_r20']:+}%", None), ("近 60 日動能", f"{d['q_r60']:+}%", None))
                 ])
                 st.divider()
-        else: st.error(f"查無符合「{search_query}」的標的。")
+        else: st.error(f"查無符合「{active_search}」的標的。")
 
     st.subheader("🏆 強勢股排行榜")
     df_raw = pd.DataFrame(market_rankings)
@@ -519,12 +522,13 @@ with tab_leaderboard:
         display_df = filtered_df[["rs_rating", "symbol", "name", "market", "score", "rs_ratio", "rs_momentum", "順勢操作狀態"]].rename(columns={"rs_rating": "RS Rating (PR)", "symbol": "股票代號", "name": "中文名稱", "market": "上市櫃", "score": "綜合動能得分", "rs_ratio": "RS_ratio (60MA)", "rs_momentum": "RS動能比率(20MA)"})
         st.caption(f"共計 **{len(display_df)}** 檔標的符合條件（RS ≥ {min_rs}） ｜ 💡 **提示：點選表格中任意個股可直接在上方帶入查詢**")
         
-        selected_event = st.dataframe(display_df, use_container_width=True, hide_index=True, height=450, on_select="rerun", selection_mode="single-row")
-        selected_rows = selected_event.selection.get("rows", []) if selected_event and hasattr(selected_event, "selection") else []
-        if selected_rows:
-            target_stock = str(display_df.iloc[selected_rows[0]]["股票代號"])
-            if st.session_state.target_search_query != target_stock:
-                st.session_state.target_search_query = target_stock
+        event = st.dataframe(display_df, use_container_width=True, hide_index=True, height=450, on_select="rerun", selection_mode="single-row", key="rank_df_table")
+        if event and hasattr(event, "selection") and event.selection.get("rows"):
+            sel_idx = event.selection["rows"][0]
+            chosen_sym = str(display_df.iloc[sel_idx]["股票代號"])
+            if st.session_state.search_kw != chosen_sym:
+                st.session_state.search_kw = chosen_sym
+                st.session_state.search_box_input = chosen_sym
                 st.rerun()
     else: st.info("尚無排名資料。")
 
