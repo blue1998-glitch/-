@@ -13,21 +13,13 @@ from streamlit_gsheets import GSheetsConnection
 
 st.set_page_config(layout="wide", initial_sidebar_state="collapsed", page_title="台股動能 RS 與大盤寬度監控")
 
-DATA_FILE = "portfolio.json"
-TW_TZ = timezone(timedelta(hours=8))
-
-def get_tw_now():
-    return datetime.now(TW_TZ)
-
-def get_tw_now_str(fmt="%Y-%m-%d %H:%M:%S"):
-    return get_tw_now().strftime(fmt)
+DATA_FILE, TW_TZ = "portfolio.json", timezone(timedelta(hours=8))
+get_tw_now = lambda: datetime.now(TW_TZ)
+get_tw_now_str = lambda fmt="%Y-%m-%d %H:%M:%S": get_tw_now().strftime(fmt)
 
 if "last_portfolio_refresh" not in st.session_state:
     st.session_state.last_portfolio_refresh = get_tw_now_str()
 
-# ==========================================
-# 官方標準券商下單簡稱對照庫
-# ==========================================
 def _load_official_names():
     try:
         if os.path.exists("stock_names.json"):
@@ -39,224 +31,111 @@ def _load_official_names():
 
 OFFICIAL_STOCK_NAMES = _load_official_names()
 
-def clean_stock_name(name, symbol=None):
-    if symbol:
-        sym_str = str(symbol).strip().upper()
-        if sym_str.endswith(".0"):
-            sym_str = sym_str[:-2]
-        if sym_str in OFFICIAL_STOCK_NAMES:
-            return OFFICIAL_STOCK_NAMES[sym_str]
-    
-    if not name:
-        return str(symbol) if symbol else ""
-    
-    raw = str(name).strip()
-    for sym_k, std_name in OFFICIAL_STOCK_NAMES.items():
-        if raw == std_name or raw == f"{std_name}股份有限公司" or raw.startswith(std_name):
-            if len(raw) <= len(std_name) + 12:
-                return std_name
-
-    cleaned = raw
-    for suffix in [
-        "股份有限公司台灣分公司", "股份有限公司", "有限股份公司",
-        "有限公司", "(股)公司", "（股）公司"
-    ]:
-        cleaned = cleaned.replace(suffix, "")
-    
-    cleaned = cleaned.strip()
-    return cleaned if cleaned else raw
-
 def clean_symbol_str(val):
-    """確保股票代號純淨（去除 .0、前後空白）"""
-    if val is None:
-        return ""
-    s = str(val).strip()
-    if s.endswith(".0"):
-        s = s[:-2]
-    return s
+    s = str(val or "").strip()
+    return s[:-2] if s.endswith(".0") else s
 
-# ==========================================
-# 核心數學模組：時區清洗與大盤基準動能引擎
-# ==========================================
+def clean_stock_name(name, symbol=None):
+    sym = clean_symbol_str(symbol).upper()
+    if sym in OFFICIAL_STOCK_NAMES:
+        return OFFICIAL_STOCK_NAMES[sym]
+    if not name:
+        return sym
+    raw = str(name).strip()
+    for _, std_name in OFFICIAL_STOCK_NAMES.items():
+        if (raw == std_name or raw == f"{std_name}股份有限公司" or raw.startswith(std_name)) and len(raw) <= len(std_name) + 12:
+            return std_name
+    cleaned = raw
+    for suf in ["股份有限公司台灣分公司", "股份有限公司", "有限股份公司", "有限公司", "(股)公司", "（股）公司"]:
+        cleaned = cleaned.replace(suf, "")
+    return cleaned.strip() or raw
+
 def _clean_date_series(df):
     if df is None or df.empty:
         return pd.DataFrame()
-    d = df.copy()
-    if "Date" not in d.columns:
-        d = d.reset_index()
-    
-    date_col = None
+    d = df.reset_index() if "Date" not in df.columns else df.copy()
     for col in ["Date", "Datetime", "index", "date"]:
         if col in d.columns:
-            date_col = col
+            try:
+                d["Date"] = pd.to_datetime(pd.to_datetime(d[col], utc=True).dt.tz_convert("Asia/Taipei").dt.strftime("%Y-%m-%d"))
+            except Exception:
+                d["Date"] = pd.to_datetime(pd.to_datetime(d[col]).dt.strftime("%Y-%m-%d"))
+            if col != "Date":
+                d = d.drop(columns=[col])
             break
-            
-    if date_col:
-        try:
-            d["Date"] = pd.to_datetime(pd.to_datetime(d[date_col], utc=True).dt.tz_convert("Asia/Taipei").dt.strftime("%Y-%m-%d"))
-            if date_col != "Date":
-                d = d.drop(columns=[date_col])
-        except Exception:
-            d["Date"] = pd.to_datetime(pd.to_datetime(d[date_col]).dt.strftime("%Y-%m-%d"))
     return d
 
 @st.cache_data(ttl=1800)
 def get_benchmark_returns():
     bm_data = {}
-    targets = [("TW", "^TWII"), ("TWO", "^TWOII")]
-    
-    for mkt_key, sym in targets:
-        df = pd.DataFrame()
+    for mkt_key, sym in [("TW", "^TWII"), ("TWO", "^TWOII")]:
         try:
-            bm = yf.Ticker(sym)
-            df = bm.history(period="1y")
+            df = yf.Ticker(sym).history(period="1y")
             if df.empty or len(df) < 20:
-                alt_sym = "0050.TW" if mkt_key == "TW" else "^TWII"
-                df = yf.Ticker(alt_sym).history(period="1y")
+                df = yf.Ticker("0050.TW" if mkt_key == "TW" else "^TWII").history(period="1y")
         except Exception:
-            try:
-                df = yf.Ticker("0050.TW").history(period="1y")
-            except Exception:
-                pass
+            try: df = yf.Ticker("0050.TW").history(period="1y")
+            except Exception: df = pd.DataFrame()
 
         if not df.empty:
-            df_clean = _clean_date_series(df)
-            closes = df_clean["Close"].values
-            r_5d = round(((closes[-1] - closes[-6]) / closes[-6]) * 100, 2) if len(closes) >= 6 else 0.0
-            r_20d = round(((closes[-1] - closes[-21]) / closes[-21]) * 100, 2) if len(closes) >= 21 else 0.0
-            r_60d = round(((closes[-1] - closes[-61]) / closes[-61]) * 100, 2) if len(closes) >= 61 else 0.0
-            bm_data[mkt_key] = {
-                "df": df_clean[["Date", "Close"]].rename(columns={"Close": "benchmark_close"}),
-                "r_5d": r_5d,
-                "r_20d": r_20d,
-                "r_60d": r_60d
-            }
+            df_c = _clean_date_series(df)
+            c = df_c["Close"].values
+            calc_r = lambda days: round(((c[-1] - c[-days-1]) / c[-days-1]) * 100, 2) if len(c) > days else 0.0
+            bm_data[mkt_key] = {"df": df_c[["Date", "Close"]].rename(columns={"Close": "benchmark_close"}), "r_5d": calc_r(5), "r_20d": calc_r(20), "r_60d": calc_r(60)}
 
-    if "TW" not in bm_data:
-        bm_data["TW"] = {"df": pd.DataFrame(), "r_5d": 0.0, "r_20d": 0.0, "r_60d": 0.0}
-    if "TWO" not in bm_data:
-        bm_data["TWO"] = bm_data["TW"]
-        
+    bm_data.setdefault("TW", {"df": pd.DataFrame(), "r_5d": 0.0, "r_20d": 0.0, "r_60d": 0.0})
+    bm_data.setdefault("TWO", bm_data["TW"])
     return bm_data
 
 def calculate_rs_ratio_series(target_df, benchmark_df, rs_window=60, momentum_window=20):
     try:
         if target_df is None or target_df.empty or benchmark_df is None or benchmark_df.empty:
             return pd.DataFrame()
+        t_df, b_df = _clean_date_series(target_df), _clean_date_series(benchmark_df)
+        if "Close" not in t_df.columns: return pd.DataFrame()
+        b_df = b_df.rename(columns={"Close": "benchmark_close"}) if "benchmark_close" not in b_df.columns and "Close" in b_df.columns else b_df
+        if "benchmark_close" not in b_df.columns: return pd.DataFrame()
 
-        t_df = _clean_date_series(target_df)
-        b_df = _clean_date_series(benchmark_df)
-
-        if "Close" not in t_df.columns:
-            return pd.DataFrame()
-        if "benchmark_close" not in b_df.columns:
-            if "Close" in b_df.columns:
-                b_df = b_df.rename(columns={"Close": "benchmark_close"})
-            else:
-                return pd.DataFrame()
-
-        t_sub = t_df[["Date", "Close"]].rename(columns={"Close": "target_close"})
-        b_sub = b_df[["Date", "benchmark_close"]]
-
+        t_sub, b_sub = t_df[["Date", "Close"]].rename(columns={"Close": "target_close"}), b_df[["Date", "benchmark_close"]]
         merged = pd.merge(t_sub, b_sub, on="Date", how="inner").sort_values("Date").reset_index(drop=True)
         if len(merged) < 10:
-            merged = pd.merge(t_sub, b_sub, on="Date", how="outer").sort_values("Date").reset_index(drop=True)
-            merged["target_close"] = merged["target_close"].ffill().bfill()
-            merged["benchmark_close"] = merged["benchmark_close"].ffill().bfill()
-
+            merged = pd.merge(t_sub, b_sub, on="Date", how="outer").sort_values("Date").reset_index(drop=True).ffill().bfill()
         merged = merged[(merged["benchmark_close"] > 0) & (merged["target_close"] > 0)].copy()
-        if len(merged) == 0:
-            return pd.DataFrame()
+        if merged.empty: return pd.DataFrame()
 
         merged["rs_raw"] = (merged["target_close"] / merged["benchmark_close"]) * 100.0
-        min_p60 = min(len(merged), max(5, rs_window // 4))
-        merged["rs_ma60"] = merged["rs_raw"].rolling(window=rs_window, min_periods=min_p60).mean().bfill()
-
-        merged["rs_ratio"] = np.where(
-            merged["rs_ma60"] > 0,
-            100.0 * (merged["rs_raw"] / merged["rs_ma60"]),
-            100.0
-        )
-
-        min_p20 = min(len(merged), max(3, momentum_window // 4))
-        rs_ratio_series = pd.Series(merged["rs_ratio"], index=merged.index)
-        rs_ratio_ma20 = rs_ratio_series.rolling(window=momentum_window, min_periods=min_p20).mean().bfill()
-
-        merged["rs_momentum"] = np.where(
-            rs_ratio_ma20 > 0,
-            100.0 * (merged["rs_ratio"] / rs_ratio_ma20),
-            100.0
-        )
-
+        merged["rs_ma60"] = merged["rs_raw"].rolling(rs_window, min_periods=min(len(merged), max(5, rs_window // 4))).mean().bfill()
+        merged["rs_ratio"] = np.where(merged["rs_ma60"] > 0, 100.0 * (merged["rs_raw"] / merged["rs_ma60"]), 100.0)
+        
+        rs_ratio_ma20 = merged["rs_ratio"].rolling(momentum_window, min_periods=min(len(merged), max(3, momentum_window // 4))).mean().bfill()
+        merged["rs_momentum"] = np.where(rs_ratio_ma20 > 0, 100.0 * (merged["rs_ratio"] / rs_ratio_ma20), 100.0)
         return merged
     except Exception:
         return pd.DataFrame()
 
-# ==========================================
-# 順勢操作法則：動能狀態分類引擎
-# ==========================================
 def get_trend_master_status(row):
-    try:
-        rs = float(row.get("rs_rating", 50))
-    except Exception:
-        rs = 50.0
-    badge = str(row.get("pattern_badge", ""))
-    try:
-        r_5d = float(row.get("r_5d", 0.0))
-    except Exception:
-        r_5d = 0.0
-    
-    rs_ratio_val = row.get("rs_ratio", 100.0)
-    try:
-        rs_ratio = float(rs_ratio_val) if rs_ratio_val is not None else 100.0
-    except Exception:
-        rs_ratio = 100.0
-    
-    prefix = "🔥[強勢] " if rs_ratio >= 100.0 else "❄️[弱勢] "
-    
-    if rs >= 95:
-        if "新高" in badge or r_5d >= 10.0:
-            return f"{prefix}👑 頂級領袖・突破新高 (主力首選)"
-        elif "VCP" in badge:
-            return f"{prefix}🎯 頂級VCP・即將噴出 (極限強勢)"
-        else:
-            return f"{prefix}🚀 極致飆股・主升奔馳 (最強5%)"
-    elif rs >= 90:
-        if "VCP" in badge:
-            return f"{prefix}🎯 VCP蓄勢・突破在即 (黃金買點)"
-        elif "新高" in badge:
-            return f"{prefix}⭐ 領袖新高・順風追擊 (多頭先鋒)"
-        else:
-            return f"{prefix}🚀 狂暴主升・沿線抱牢 (第一梯隊)"
-    elif rs >= 80:
-        if "VCP" in badge:
-            return f"{prefix}🎯 VCP收縮・縮量待發 (觀察進場)"
-        elif "新高" in badge:
-            return f"{prefix}⭐ 區間突破・趨勢確立 (順勢加碼)"
-        elif "反彈" in badge:
-            return f"{prefix}⚠️ 短線強彈・觀察季線 (謹慎試單)"
-        else:
-            return f"{prefix}⚡ 強大多頭・順勢推升 (右側安全)"
-    elif rs >= 75:
-        if "反彈" in badge:
-            return f"{prefix}⚠️ 左側反彈・上方有壓 (短打勿追)"
-        elif "VCP" in badge:
-            return f"{prefix}🎯 底部收斂・轉強蓄勢 (第二梯隊)"
-        else:
-            return f"{prefix}🔥 突破初升・動能成型 (第三梯隊)"
-    elif rs >= 50:
-        return f"{prefix}📦 區間整理・等待表態 (動能平平)"
-    else:
-        return f"{prefix}⛔ 弱勢落後・左側不碰 (避開死水)"
+    rs = float(row.get("rs_rating", 50) or 50)
+    badge, r_5d = str(row.get("pattern_badge", "")), float(row.get("r_5d", 0.0) or 0.0)
+    rs_ratio = float(row.get("rs_ratio", 100.0) or 100.0)
+    p = "🔥[強勢] " if rs_ratio >= 100.0 else "❄️[弱勢] "
 
-# ==========================================
-# 資料儲存模組 (Google Sheets 雲端持久化)
-# ==========================================
+    if rs >= 95:
+        sub = "👑 頂級領袖・突破新高 (主力首選)" if "新高" in badge or r_5d >= 10.0 else ("🎯 頂級VCP・即將噴出 (極限強勢)" if "VCP" in badge else "🚀 極致飆股・主升奔馳 (最強5%)")
+    elif rs >= 90:
+        sub = "🎯 VCP蓄勢・突破在即 (黃金買點)" if "VCP" in badge else ("⭐ 領袖新高・順風追擊 (多頭先鋒)" if "新高" in badge else "🚀 狂暴主升・沿線抱牢 (第一梯隊)")
+    elif rs >= 80:
+        sub = "🎯 VCP收縮・縮量待發 (觀察進場)" if "VCP" in badge else ("⭐ 區間突破・趨勢確立 (順勢加碼)" if "新高" in badge else ("⚠️ 短線強彈・觀察季線 (謹慎試單)" if "反彈" in badge else "⚡ 強大多頭・順勢推升 (右側安全)"))
+    elif rs >= 75:
+        sub = "⚠️ 左側反彈・上方有壓 (短打勿追)" if "反彈" in badge else ("🎯 底部收斂・轉強蓄勢 (第二梯隊)" if "VCP" in badge else "🔥 突破初升・動能成型 (第三梯隊)")
+    elif rs >= 50:
+        sub = "📦 區間整理・等待表態 (動能平平)"
+    else:
+        sub = "⛔ 弱勢落後・左側不碰 (避開死水)"
+    return f"{p}{sub}"
+
 def _get_gsheet_conn():
-    try:
-        return st.connection("gsheets", type=GSheetsConnection)
-    except Exception:
-        return None
+    try: return st.connection("gsheets", type=GSheetsConnection)
+    except Exception: return None
 
 def load_data():
     conn = _get_gsheet_conn()
@@ -265,60 +144,24 @@ def load_data():
             df = conn.read(ttl="0")
             if df is not None and not df.empty:
                 records = []
-                for _, row in df.iterrows():
-                    r_dict = row.dropna().to_dict()
-                    sym_clean = clean_symbol_str(r_dict.get("symbol", ""))
-                    if not sym_clean:
-                        continue
-                    
-                    history_val = r_dict.get("history", "[]")
-                    if isinstance(history_val, str):
-                        try:
-                            history_list = json.loads(history_val)
-                        except Exception:
-                            history_list = []
-                    elif isinstance(history_val, list):
-                        history_list = history_val
-                    else:
-                        history_list = []
-
-                    try:
-                        cost_val = float(r_dict.get("avg_cost", 0.0))
-                    except Exception:
-                        cost_val = 0.0
-
-                    try:
-                        shares_val = int(float(r_dict.get("shares", 0)))
-                    except Exception:
-                        shares_val = 0
-
-                    try:
-                        high_val = float(r_dict.get("record_high", cost_val))
-                    except Exception:
-                        high_val = cost_val
-
-                    try:
-                        pnl_val = float(r_dict.get("realized_pnl", 0))
-                    except Exception:
-                        pnl_val = 0.0
-
-                    record = {
-                        "symbol": sym_clean,
-                        "name": clean_stock_name(r_dict.get("name"), sym_clean),
-                        "market": str(r_dict.get("market", "TW")).strip().upper(),
-                        "entry_date": str(r_dict.get("entry_date", get_tw_now_str("%Y-%m-%d"))).strip(),
-                        "avg_cost": cost_val,
-                        "shares": shares_val,
-                        "record_high": high_val,
-                        "realized_pnl": pnl_val,
-                        "history": history_list
-                    }
-                    records.append(record)
+                for _, r in df.iterrows():
+                    d = r.dropna().to_dict()
+                    sym = clean_symbol_str(d.get("symbol", ""))
+                    if not sym: continue
+                    hist = d.get("history", "[]")
+                    records.append({
+                        "symbol": sym, "name": clean_stock_name(d.get("name"), sym),
+                        "market": str(d.get("market", "TW")).strip().upper(),
+                        "entry_date": str(d.get("entry_date", get_tw_now_str("%Y-%m-%d"))).strip(),
+                        "avg_cost": float(d.get("avg_cost", 0.0) or 0.0),
+                        "shares": int(float(d.get("shares", 0) or 0)),
+                        "record_high": float(d.get("record_high", d.get("avg_cost", 0.0)) or 0.0),
+                        "realized_pnl": float(d.get("realized_pnl", 0) or 0.0),
+                        "history": json.loads(hist) if isinstance(hist, str) else (hist if isinstance(hist, list) else [])
+                    })
                 return records
-        except Exception:
-            pass
+        except Exception: pass
 
-    # 備援：本地 json
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -327,400 +170,241 @@ def load_data():
                     d["symbol"] = clean_symbol_str(d.get("symbol", ""))
                     d["name"] = clean_stock_name(d.get("name"), d.get("symbol"))
                 return data
-        except Exception:
-            return []
+        except Exception: return []
     return []
 
 def save_data(data):
     try:
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
+    except Exception: pass
 
     conn = _get_gsheet_conn()
     if conn:
         try:
+            cols = ["symbol", "name", "market", "entry_date", "avg_cost", "shares", "record_high", "realized_pnl", "history"]
             if not data:
-                empty_df = pd.DataFrame(columns=[
-                    "symbol", "name", "market", "entry_date", 
-                    "avg_cost", "shares", "record_high", "realized_pnl", "history"
-                ])
-                conn.update(data=empty_df)
+                conn.update(data=pd.DataFrame(columns=cols))
                 return
-            
-            rows = []
-            for item in data:
-                rows.append({
-                    "symbol": clean_symbol_str(item.get("symbol", "")),
-                    "name": item.get("name", ""),
-                    "market": item.get("market", "TW"),
-                    "entry_date": str(item.get("entry_date", "")),
-                    "avg_cost": float(item.get("avg_cost", 0.0)),
-                    "shares": int(item.get("shares", 0)),
-                    "record_high": float(item.get("record_high", 0.0)),
-                    "realized_pnl": float(item.get("realized_pnl", 0)),
-                    "history": json.dumps(item.get("history", []), ensure_ascii=False)
-                })
-            df_to_save = pd.DataFrame(rows)
-            conn.update(data=df_to_save)
+            rows = [{
+                "symbol": clean_symbol_str(it.get("symbol", "")), "name": it.get("name", ""),
+                "market": it.get("market", "TW"), "entry_date": str(it.get("entry_date", "")),
+                "avg_cost": float(it.get("avg_cost", 0.0)), "shares": int(it.get("shares", 0)),
+                "record_high": float(it.get("record_high", 0.0)), "realized_pnl": float(it.get("realized_pnl", 0)),
+                "history": json.dumps(it.get("history", []), ensure_ascii=False)
+            } for it in data]
+            conn.update(data=pd.DataFrame(rows))
         except Exception as e:
             st.error(f"Google Sheets 寫入失敗: {e}")
 
 def make_log_entry(action, price, share_delta, remaining_shares, pnl_text, note):
-    return {
-        "時間": get_tw_now_str("%Y-%m-%d %H:%M"),
-        "動作": action,
-        "成交價": price,
-        "異動股數": share_delta,
-        "剩餘股數": remaining_shares,
-        "單筆實現損益": pnl_text,
-        "備註": note
-    }
+    return {"時間": get_tw_now_str("%Y-%m-%d %H:%M"), "動作": action, "成交價": price, "異動股數": share_delta, "剩餘股數": remaining_shares, "單筆實現損益": pnl_text, "備註": note}
 
 @st.cache_data(ttl=60)
 def load_market_data():
-    raw_list = []
-    status_msg = "無可用資料"
-
+    raw_list, status_msg = [], "無可用資料"
     if os.path.exists("market_rankings.json"):
         try:
-            mtime = os.path.getmtime("market_rankings.json")
-            mtime_str = datetime.fromtimestamp(mtime, tz=TW_TZ).strftime("%Y-%m-%d %H:%M:%S")
+            mtime_str = datetime.fromtimestamp(os.path.getmtime("market_rankings.json"), tz=TW_TZ).strftime("%Y-%m-%d %H:%M:%S")
             with open("market_rankings.json", "r", encoding="utf-8") as f:
                 data = json.load(f)
-                if isinstance(data, list) and len(data) > 0:
-                    raw_list = data
-                    status_msg = f"本機檔案載入成功 (產出時間: {mtime_str})"
-        except Exception:
-            pass
+                if isinstance(data, list) and data: raw_list, status_msg = data, f"本機檔案載入成功 (產出時間: {mtime_str})"
+        except Exception: pass
 
     if not raw_list:
         try:
-            url = "https://raw.githubusercontent.com/blue1998-glitch/-/main/market_rankings.json"
-            res = requests.get(url, timeout=8)
+            res = requests.get("https://raw.githubusercontent.com/blue1998-glitch/-/main/market_rankings.json", timeout=8)
             if res.status_code == 200:
                 data = res.json()
-                if isinstance(data, list) and len(data) > 0:
-                    fetch_time = get_tw_now_str()
-                    raw_list = data
-                    status_msg = f"線上同步成功 (同步時間: {fetch_time})"
+                if isinstance(data, list) and data: raw_list, status_msg = data, f"線上同步成功 (同步時間: {get_tw_now_str()})"
         except Exception as e:
             return [], f"連線異常: {str(e)}"
 
     bm_dict = get_benchmark_returns()
-
     for item in raw_list:
         item["symbol"] = clean_symbol_str(item.get("symbol", ""))
         item["name"] = clean_stock_name(item.get("name"), item.get("symbol"))
         mkt_key = "TWO" if "上櫃" in str(item.get("market", "")) or "TWO" in str(item.get("market", "")).upper() else "TW"
         bm_info = bm_dict.get(mkt_key, bm_dict["TW"])
-        bm_r60 = bm_info.get("r_60d", 0.0)
-        bm_r20 = bm_info.get("r_20d", 0.0)
-
-        s_r60 = float(item.get("r_60d", 0.0))
-        s_r20 = float(item.get("r_20d", 0.0))
-
-        if "rs_ratio" not in item or item["rs_ratio"] == 100.0 or item["rs_ratio"] is None:
-            item["rs_ratio"] = round(100.0 * (1.0 + s_r60 / 100.0) / max(0.01, (1.0 + bm_r60 / 100.0)), 2)
+        bm_r60, bm_r20 = bm_info.get("r_60d", 0.0), bm_info.get("r_20d", 0.0)
+        s_r60, s_r20 = float(item.get("r_60d", 0.0) or 0.0), float(item.get("r_20d", 0.0) or 0.0)
         
-        if "rs_momentum" not in item or item["rs_momentum"] == 100.0 or item["rs_momentum"] is None:
+        if "rs_ratio" not in item or item["rs_ratio"] in (100.0, None):
+            item["rs_ratio"] = round(100.0 * (1.0 + s_r60 / 100.0) / max(0.01, (1.0 + bm_r60 / 100.0)), 2)
+        if "rs_momentum" not in item or item["rs_momentum"] in (100.0, None):
             item["rs_momentum"] = round(100.0 * (1.0 + s_r20 / 100.0) / max(0.01, (1.0 + bm_r20 / 100.0)), 2)
 
     return raw_list, status_msg
 
 def get_stock_rs_info(symbol, market_list):
-    sym_clean = clean_symbol_str(symbol).upper()
-    for item in market_list:
-        if clean_symbol_str(item.get("symbol", "")).upper() == sym_clean:
-            return item
-    return None
+    sym = clean_symbol_str(symbol).upper()
+    return next((it for it in market_list if clean_symbol_str(it.get("symbol", "")).upper() == sym), None)
 
 def fetch_stock_and_momentum(symbol, market, entry_date_str=None):
     sym_clean = clean_symbol_str(symbol)
     is_otc = "TWO" in str(market).upper() or "上櫃" in str(market)
-    ticker = f"{sym_clean}.TWO" if is_otc else f"{sym_clean}.TW"
+    ticker, alt_ticker = f"{sym_clean}.TWO" if is_otc else f"{sym_clean}.TW", f"{sym_clean}.TW" if is_otc else f"{sym_clean}.TWO"
     bm_key = "TWO" if is_otc else "TW"
 
     try:
-        stock = yf.Ticker(ticker)
-        df_all = stock.history(period="1y")
+        df_all = yf.Ticker(ticker).history(period="1y")
         if df_all.empty:
-            alt_ticker = f"{sym_clean}.TW" if is_otc else f"{sym_clean}.TWO"
-            stock = yf.Ticker(alt_ticker)
-            df_all = stock.history(period="1y")
-            if df_all.empty:
-                return None, None, None, 0.0, 0.0, 0.0, 100.0, 100.0
+            df_all = yf.Ticker(alt_ticker).history(period="1y")
+            if df_all.empty: return None, None, None, 0.0, 0.0, 0.0, 100.0, 100.0
         
-        current_price = round(float(df_all["Close"].iloc[-1]), 2)
-        
+        cur = round(float(df_all["Close"].iloc[-1]), 2)
         try:
-            if entry_date_str:
-                df_entry = df_all.loc[df_all.index.astype(str) >= str(entry_date_str)]
-                max_high = round(float(df_entry["High"].max()), 2) if not df_entry.empty else current_price
-            else:
-                max_high = current_price
-        except Exception:
-            max_high = current_price
+            df_e = df_all.loc[df_all.index.astype(str) >= str(entry_date_str)] if entry_date_str else pd.DataFrame()
+            max_h = round(float(df_e["High"].max()), 2) if not df_e.empty else cur
+        except Exception: max_h = cur
             
-        ma20 = round(float(df_all["Close"].tail(20).mean()), 2) if len(df_all) >= 20 else current_price
-
-        closes = df_all["Close"]
-        r_5d = round(((closes.iloc[-1] - closes.iloc[-6]) / closes.iloc[-6]) * 100, 2) if len(closes) >= 6 else 0.0
-        r_1m = round(((closes.iloc[-1] - closes.iloc[-21]) / closes.iloc[-21]) * 100, 2) if len(closes) >= 21 else r_5d
-        r_1q = round(((closes.iloc[-1] - closes.iloc[-61]) / closes.iloc[-61]) * 100, 2) if len(closes) >= 61 else r_1m
+        ma20 = round(float(df_all["Close"].tail(20).mean()), 2) if len(df_all) >= 20 else cur
+        c = df_all["Close"]
+        r5 = round(((c.iloc[-1] - c.iloc[-6]) / c.iloc[-6]) * 100, 2) if len(c) >= 6 else 0.0
+        r1m = round(((c.iloc[-1] - c.iloc[-21]) / c.iloc[-21]) * 100, 2) if len(c) >= 21 else r5
+        r1q = round(((c.iloc[-1] - c.iloc[-61]) / c.iloc[-61]) * 100, 2) if len(c) >= 61 else r1m
 
         bm_dict = get_benchmark_returns()
         bm_info = bm_dict.get(bm_key, bm_dict.get("TW", {}))
-        benchmark_df = bm_info.get("df", pd.DataFrame())
-
-        rs_calc_df = calculate_rs_ratio_series(df_all, benchmark_df, rs_window=60, momentum_window=20)
+        rs_calc = calculate_rs_ratio_series(df_all, bm_info.get("df", pd.DataFrame()), 60, 20)
         
-        if not rs_calc_df.empty and "rs_ratio" in rs_calc_df.columns:
-            valid_ratio = rs_calc_df["rs_ratio"].dropna()
-            valid_mom = rs_calc_df["rs_momentum"].dropna()
-            rs_ratio_val = round(float(valid_ratio.iloc[-1]), 2) if not valid_ratio.empty else 100.0
-            rs_mom_val = round(float(valid_mom.iloc[-1]), 2) if not valid_mom.empty else 100.0
+        if not rs_calc.empty and "rs_ratio" in rs_calc.columns:
+            vr, vm = rs_calc["rs_ratio"].dropna(), rs_calc["rs_momentum"].dropna()
+            rs_r = round(float(vr.iloc[-1]), 2) if not vr.empty else 100.0
+            rs_m = round(float(vm.iloc[-1]), 2) if not vm.empty else 100.0
         else:
-            bm_r60 = bm_info.get("r_60d", 0.0)
-            bm_r20 = bm_info.get("r_20d", 0.0)
-            rs_ratio_val = round(100.0 * (1.0 + r_1q / 100.0) / max(0.01, (1.0 + bm_r60 / 100.0)), 2)
-            rs_mom_val = round(100.0 * (1.0 + r_1m / 100.0) / max(0.01, (1.0 + bm_r20 / 100.0)), 2)
+            bm_r60, bm_r20 = bm_info.get("r_60d", 0.0), bm_info.get("r_20d", 0.0)
+            rs_r = round(100.0 * (1.0 + r1q / 100.0) / max(0.01, (1.0 + bm_r60 / 100.0)), 2)
+            rs_m = round(100.0 * (1.0 + r1m / 100.0) / max(0.01, (1.0 + bm_r20 / 100.0)), 2)
 
-        return current_price, max_high, ma20, r_5d, r_1m, r_1q, rs_ratio_val, rs_mom_val
+        return cur, max_h, ma20, r5, r1m, r1q, rs_r, rs_m
     except Exception:
         return None, None, None, 0.0, 0.0, 0.0, 100.0, 100.0
 
 def calc_pnl(shares, avg_cost, current_price, fee_discount):
-    buy_fee_rate = 0.001425 * fee_discount
-    sell_fee_rate = 0.001425 * fee_discount
-    tax_rate = 0.003
-    total_buy_cost = (shares * avg_cost) * (1 + buy_fee_rate)
-    total_sell_net = (shares * current_price) * (1 - sell_fee_rate - tax_rate)
-    net_pnl = round(total_sell_net - total_buy_cost)
-    roi = round((net_pnl / total_buy_cost) * 100, 2) if total_buy_cost > 0 else 0.0
-    breakeven_price = round(avg_cost * (1 + buy_fee_rate + sell_fee_rate + tax_rate), 2)
-    return net_pnl, roi, breakeven_price
+    buy_fee, sell_fee, tax = 0.001425 * fee_discount, 0.001425 * fee_discount, 0.003
+    t_cost = (shares * avg_cost) * (1 + buy_fee)
+    t_sell = (shares * current_price) * (1 - sell_fee - tax)
+    pnl = round(t_sell - t_cost)
+    roi = round((pnl / t_cost) * 100, 2) if t_cost > 0 else 0.0
+    return pnl, roi, round(avg_cost * (1 + buy_fee + sell_fee + tax), 2)
 
-# ==========================================
-# 騰落進階指標演算法與背離偵測引擎
-# ==========================================
 def calculate_advanced_ad_indicators(df_input, n_window=20):
     df = df_input.copy()
+    r_adv, r_dec = df["advances"].rolling(n_window, min_periods=5).sum(), df["declines"].rolling(n_window, min_periods=5).sum()
+    df["rolling_ad_ratio"] = np.where(r_adv + r_dec > 0, (r_adv / (r_adv + r_dec)) * 100.0, 50.0).round(2)
+
+    net_adv = df["advances"] - df["declines"]
+    df["mcclellan_osc"] = (net_adv.ewm(span=19, adjust=False).mean() - net_adv.ewm(span=39, adjust=False).mean()).round(2)
+
+    r_hc, r_lc = df["close"].rolling(n_window, min_periods=5).max(), df["close"].rolling(n_window, min_periods=5).min()
+    r_ha, r_hm = df["rolling_ad_ratio"].rolling(n_window, min_periods=5).max(), df["mcclellan_osc"].rolling(n_window, min_periods=5).max()
+    r_la, r_lm = df["rolling_ad_ratio"].rolling(n_window, min_periods=5).min(), df["mcclellan_osc"].rolling(n_window, min_periods=5).min()
     
-    roll_adv = df["advances"].rolling(n_window, min_periods=5).sum()
-    roll_dec = df["declines"].rolling(n_window, min_periods=5).sum()
-    tot_active = roll_adv + roll_dec
-    df["rolling_ad_ratio"] = np.where(tot_active > 0, (roll_adv / tot_active) * 100.0, 50.0).round(2)
-
-    df["net_advances"] = df["advances"] - df["declines"]
-    df["ema_19"] = df["net_advances"].ewm(span=19, adjust=False).mean()
-    df["ema_39"] = df["net_advances"].ewm(span=39, adjust=False).mean()
-    df["mcclellan_osc"] = (df["ema_19"] - df["ema_39"]).round(2)
-
-    roll_high_close = df["close"].rolling(n_window, min_periods=5).max()
-    roll_low_close = df["close"].rolling(n_window, min_periods=5).min()
-    
-    roll_high_ad = df["rolling_ad_ratio"].rolling(n_window, min_periods=5).max()
-    roll_high_mcc = df["mcclellan_osc"].rolling(n_window, min_periods=5).max()
-    
-    is_close_new_high = df["close"] >= (roll_high_close - 1e-4)
-    is_ad_not_high = df["rolling_ad_ratio"] < (roll_high_ad - 1.5)
-    is_mcc_not_high = df["mcclellan_osc"] < (roll_high_mcc - 5.0)
-    
-    df["bearish_divergence"] = is_close_new_high & (is_ad_not_high | is_mcc_not_high)
-
-    roll_low_ad = df["rolling_ad_ratio"].rolling(n_window, min_periods=5).min()
-    roll_low_mcc = df["mcclellan_osc"].rolling(n_window, min_periods=5).min()
-
-    is_close_new_low = df["close"] <= (roll_low_close + 1e-4)
-    is_ad_higher = df["rolling_ad_ratio"] > (roll_low_ad + 1.5)
-    is_mcc_higher = df["mcclellan_osc"] > (roll_low_mcc + 5.0)
-
-    df["bullish_divergence"] = is_close_new_low & (is_ad_higher | is_mcc_higher)
-
+    df["bearish_divergence"] = (df["close"] >= r_hc - 1e-4) & ((df["rolling_ad_ratio"] < r_ha - 1.5) | (df["mcclellan_osc"] < r_hm - 5.0))
+    df["bullish_divergence"] = (df["close"] <= r_lc + 1e-4) & ((df["rolling_ad_ratio"] > r_la + 1.5) | (df["mcclellan_osc"] > r_lm + 5.0))
     return df
 
-# ==========================================
-# 大盤寬度與全市場指標運算引擎
-# ==========================================
 @st.cache_data(ttl=3600)
 def compute_market_breadth_data(market_list, mkt_filter="TW"):
-    filtered_symbols = []
-    for item in market_list:
-        m_type = "TWO" if "上櫃" in str(item.get("market", "")) or "TWO" in str(item.get("market", "")).upper() else "TW"
-        if mkt_filter == "ALL" or m_type == mkt_filter:
-            sym = clean_symbol_str(item.get("symbol", "")).upper()
-            if sym:
-                ticker = f"{sym}.TWO" if m_type == "TWO" else f"{sym}.TW"
-                filtered_symbols.append(ticker)
+    filtered = []
+    for it in market_list:
+        m_type = "TWO" if "上櫃" in str(it.get("market", "")) or "TWO" in str(it.get("market", "")).upper() else "TW"
+        if mkt_filter in ("ALL", m_type):
+            sym = clean_symbol_str(it.get("symbol", "")).upper()
+            if sym: filtered.append(f"{sym}.TWO" if m_type == "TWO" else f"{sym}.TW")
 
-    bm_sym = "^TWII" if mkt_filter == "TW" else "^TWOII"
     try:
-        bm_ticker = yf.Ticker(bm_sym)
-        bm_hist = bm_ticker.history(period="1y")
-        if bm_hist.empty:
-            bm_hist = yf.Ticker("0050.TW").history(period="1y")
+        bm_hist = yf.Ticker("^TWII" if mkt_filter == "TW" else "^TWOII").history(period="1y")
+        if bm_hist.empty: bm_hist = yf.Ticker("0050.TW").history(period="1y")
         bm_clean = _clean_date_series(bm_hist).set_index("Date")
-    except Exception:
-        bm_clean = pd.DataFrame()
+    except Exception: bm_clean = pd.DataFrame()
 
-    if not filtered_symbols:
-        return None
-
+    if not filtered: return None
     try:
-        data = yf.download(filtered_symbols, period="1y", interval="1d", group_by="column", auto_adjust=True, progress=False)
-    except Exception:
-        return None
+        data = yf.download(filtered, period="1y", interval="1d", group_by="column", auto_adjust=True, progress=False)
+    except Exception: return None
+    if data.empty: return None
 
-    if data.empty:
-        return None
+    closes, highs, lows = (data[k].to_frame() if isinstance(data[k], pd.Series) else data[k] for k in ["Close", "High", "Low"])
+    closes, highs, lows = closes.dropna(how="all").ffill(), highs.dropna(how="all").ffill(), lows.dropna(how="all").ffill()
+    if len(closes) < 30: return None
 
-    try:
-        closes = data["Close"]
-        highs = data["High"]
-        lows = data["Low"]
-    except Exception:
-        return None
-
-    if isinstance(closes, pd.Series):
-        closes = closes.to_frame()
-        highs = highs.to_frame()
-        lows = lows.to_frame()
-
-    closes = closes.dropna(how="all").ffill()
-    highs = highs.dropna(how="all").ffill()
-    lows = lows.dropna(how="all").ffill()
-
-    if len(closes) < 30:
-        return None
-
-    ma20 = closes.rolling(20, min_periods=5).mean()
-    ma60 = closes.rolling(60, min_periods=10).mean()
-    ma120 = closes.rolling(120, min_periods=20).mean()
-    ma240 = closes.rolling(240, min_periods=30).mean()
-
+    ma20, ma60, ma120, ma240 = [closes.rolling(w, min_periods=min(5, w//4)).mean() for w in [20, 60, 120, 240]]
     total_valid = closes.notna().sum(axis=1).replace(0, np.nan)
-    above_20ma = ((closes > ma20).sum(axis=1) / total_valid * 100).round(2)
-    above_60ma = ((closes > ma60).sum(axis=1) / total_valid * 100).round(2)
-    above_240ma = ((closes > ma240).sum(axis=1) / total_valid * 100).round(2)
+    
+    calc_ratio = lambda cond: (cond.sum(axis=1) / total_valid * 100).round(2)
+    above_20, above_60, above_240 = calc_ratio(closes > ma20), calc_ratio(closes > ma60), calc_ratio(closes > ma240)
 
-    roll_max_240 = highs.rolling(240, min_periods=30).max()
-    roll_min_240 = lows.rolling(240, min_periods=30).min()
-
-    new_high_mask = highs >= (roll_max_240 - 1e-4)
-    new_low_mask = lows <= (roll_min_240 + 1e-4)
-
-    new_high_count = new_high_mask.sum(axis=1)
-    new_low_count = new_low_mask.sum(axis=1)
-    new_high_ratio = (new_high_count / total_valid * 100).round(2)
-    new_low_ratio = (new_low_count / total_valid * 100).round(2)
-
-    net_high_low = new_high_count - new_low_count
-
+    nh_mask, nl_mask = highs >= (highs.rolling(240, min_periods=30).max() - 1e-4), lows <= (lows.rolling(240, min_periods=30).min() + 1e-4)
+    nh_c, nl_c = nh_mask.sum(axis=1), nl_mask.sum(axis=1)
+    
     diff = closes.diff()
-    advances = (diff > 0).sum(axis=1)
-    declines = (diff < 0).sum(axis=1)
-    unchanged = (diff == 0).sum(axis=1)
-
-    short_bull = ((closes > ma20) & (ma20 > ma60)).sum(axis=1)
-    short_bull_ratio = (short_bull / total_valid * 100).round(2)
-
-    long_bull = ((closes > ma20) & (ma20 > ma60) & (ma60 > ma120) & (ma120 > ma240)).sum(axis=1)
-    long_bull_ratio = (long_bull / total_valid * 100).round(2)
+    short_bull = calc_ratio((closes > ma20) & (ma20 > ma60))
+    long_bull = calc_ratio((closes > ma20) & (ma20 > ma60) & (ma60 > ma120) & (ma120 > ma240))
 
     base_dates = closes.index.strftime("%Y-%m-%d").tolist()
-    
     dates_idx = pd.to_datetime(base_dates)
-    if not bm_clean.empty and "Close" in bm_clean.columns:
-        bm_aligned = bm_clean["Close"].reindex(dates_idx).ffill().bfill()
-        bm_close_series = bm_aligned.values
-    else:
-        bm_close_series = np.linspace(20000, 23000, len(base_dates))
+    bm_closes = bm_clean["Close"].reindex(dates_idx).ffill().bfill().values if not bm_clean.empty and "Close" in bm_clean.columns else np.linspace(20000, 23000, len(base_dates))
 
-    raw_ad_df = pd.DataFrame({
-        "date": base_dates,
-        "close": bm_close_series,
-        "advances": advances.values,
-        "declines": declines.values,
-        "unchanged": unchanged.values
-    })
+    ad_calc = calculate_advanced_ad_indicators(pd.DataFrame({
+        "date": base_dates, "close": bm_closes, "advances": (diff > 0).sum(axis=1).values,
+        "declines": (diff < 0).sum(axis=1).values, "unchanged": (diff == 0).sum(axis=1).values
+    }), 20)
 
-    ad_calc = calculate_advanced_ad_indicators(raw_ad_df, n_window=20)
-
-    bm_series = pd.Series(ad_calc["close"].values)
-    bm_ma60 = bm_series.rolling(60, min_periods=5).mean()
-    dist_60ma_pct = (((bm_series - bm_ma60) / bm_ma60) * 100.0).round(2).values
-
-    res_df = pd.DataFrame({
-        "Date": base_dates,
-        "close": ad_calc["close"].values,
-        "above_20ma": above_20ma.values,
-        "above_60ma": above_60ma.values,
-        "above_240ma": above_240ma.values,
-        "new_high_count": new_high_count.values,
-        "new_low_count": new_low_count.values,
-        "new_high_ratio": new_high_ratio.values,
-        "new_low_ratio": new_low_ratio.values,
-        "net_high_low": net_high_low.values,
-        "advances": advances.values,
-        "declines": declines.values,
-        "unchanged": unchanged.values,
-        "rolling_ad_ratio": ad_calc["rolling_ad_ratio"].values,
-        "mcclellan_osc": ad_calc["mcclellan_osc"].values,
-        "bearish_divergence": ad_calc["bearish_divergence"].values,
+    bm_ma60 = pd.Series(ad_calc["close"].values).rolling(60, min_periods=5).mean()
+    
+    return pd.DataFrame({
+        "Date": base_dates, "close": ad_calc["close"].values, "above_20ma": above_20.values,
+        "above_60ma": above_60.values, "above_240ma": above_240.values, "new_high_count": nh_c.values,
+        "new_low_count": nl_c.values, "new_high_ratio": (nh_c / total_valid * 100).round(2).values,
+        "new_low_ratio": (nl_c / total_valid * 100).round(2).values, "net_high_low": (nh_c - nl_c).values,
+        "advances": (diff > 0).sum(axis=1).values, "declines": (diff < 0).sum(axis=1).values,
+        "unchanged": (diff == 0).sum(axis=1).values, "rolling_ad_ratio": ad_calc["rolling_ad_ratio"].values,
+        "mcclellan_osc": ad_calc["mcclellan_osc"].values, "bearish_divergence": ad_calc["bearish_divergence"].values,
         "bullish_divergence": ad_calc["bullish_divergence"].values,
-        "dist_60ma_pct": dist_60ma_pct,
-        "short_bull_ratio": short_bull_ratio.values,
-        "long_bull_ratio": long_bull_ratio.values,
-        "total_stocks": total_valid.values
+        "dist_60ma_pct": (((pd.Series(ad_calc["close"].values) - bm_ma60) / bm_ma60) * 100.0).round(2).values,
+        "short_bull_ratio": short_bull.values, "long_bull_ratio": long_bull.values, "total_stocks": total_valid.values
     }).set_index("Date")
 
-    return res_df
+def render_metric_grid(pairs):
+    for (l1, v1, d1), (l2, v2, d2) in pairs:
+        c1, c2 = st.columns(2)
+        c1.metric(l1, v1, d1)
+        c2.metric(l2, v2, d2)
 
 # ==========================================
 # 介面渲染
 # ==========================================
 market_rankings, db_status = load_market_data()
-
 st.title("🚀 台股儀表板")
 
 with st.expander("🛡️ 說明", expanded=False):
     st.markdown("**RS_ratio 雙軸指標**：以 60 日季線為強弱中軸（≥100 為 🔥[強勢]，<100 為 ❄️[弱勢]）；以 20 日 SMA 為短線動能加速度。")
     r1, r2 = st.columns(2)
     with r1:
-        st.markdown("**1. 🔴 初始停損**：跌破預設趴數無條件停損。")
-        st.markdown("**2. 🛡️ 保本停損**：獲利達標鎖定零虧損。")
-        st.markdown("**3. 🟣 高點回檔**：自高點拉回觸發分批停利。")
+        st.markdown("**1. 🔴 初始停損**：跌破預設趴數無條件停損。\n\n**2. 🛡️ 保本停損**：獲利達標鎖定零虧損。\n\n**3. 🟣 高點回檔**：自高點拉回觸發分批停利。")
     with r2:
-        st.markdown("**4. 🟠 月線過熱**：20MA 正乖離過大建議調節。")
-        st.markdown("**5. ⏳ 時間停損**：持股過久動能停滯建議換股。")
+        st.markdown("**4. 🟠 月線過熱**：20MA 正乖離過大建議調節。\n\n**5. ⏳ 時間停損**：持股過久動能停滯建議換股。")
 
-if len(market_rankings) > 0:
+if market_rankings:
     st.info(f"🟢 **全市場 RS 資料庫已就緒** ｜ 收錄 **{len(market_rankings)}** 檔台股 ｜ 狀態：{db_status}")
 else:
     st.warning("🟡 正在等待全市場 RS 排名資料載入...")
 
-tab_portfolio, tab_leaderboard, tab_market_breadth = st.tabs([
-    "📈 獲利監控系統", 
-    "🏆 個股查詢",
-    "📊 大盤"
-])
+tab_portfolio, tab_leaderboard, tab_market_breadth = st.tabs(["📈 獲利監控系統", "🏆 個股查詢", "📊 大盤"])
 
-# ==========================================
-# 分頁 1：個人持股
-# ==========================================
 with tab_portfolio:
     with st.expander("⚙️ 參數設定", expanded=False):
         c1, c2 = st.columns(2)
         with c1:
-            stop_loss_pct = st.number_input("🔴 初始停損趴數 (%)", min_value=1.0, max_value=50.0, value=7.0, step=0.5, format="%.1f")
-            breakeven_trigger_pct = st.number_input("🛡️ 保本停損啟動門檻 (%)", min_value=1.0, max_value=50.0, value=8.0, step=0.5, format="%.1f")
-            pullback_target_pct = st.number_input("🟣 高點回檔停利趴數 (%)", min_value=1.0, max_value=50.0, value=10.0, step=0.5, format="%.1f")
+            stop_loss_pct = st.number_input("🔴 初始停損趴數 (%)", 1.0, 50.0, 7.0, 0.5, format="%.1f")
+            breakeven_trigger_pct = st.number_input("🛡️ 保本停損啟動門檻 (%)", 1.0, 50.0, 8.0, 0.5, format="%.1f")
+            pullback_target_pct = st.number_input("🟣 高點回檔停利趴數 (%)", 1.0, 50.0, 10.0, 0.5, format="%.1f")
         with c2:
-            bias_threshold = st.number_input("🟠 月線正乖離過熱閥值 (%)", min_value=5.0, max_value=100.0, value=30.0, step=1.0, format="%.0f")
-            time_stop_days = st.number_input("⏳ 時間停損天數（天）", min_value=1, max_value=100, value=10, step=1)
-            discount_display = st.number_input("💰 券商手續費折數", min_value=0.01, max_value=1.0, value=0.60, step=0.05, format="%.2f")
+            bias_threshold = st.number_input("🟠 月線正乖離過熱閥值 (%)", 5.0, 100.0, 30.0, 1.0, format="%.0f")
+            time_stop_days = st.number_input("⏳ 時間停損天數（天）", 1, 100, 10, 1)
+            discount_display = st.number_input("💰 券商手續費折數", 0.01, 1.0, 0.60, 0.05, format="%.2f")
 
     portfolio = load_data()
 
@@ -736,27 +420,17 @@ with tab_portfolio:
                 price = st.number_input("買進價格", min_value=0.1, step=0.1, value=100.0)
                 shs = st.number_input("買進股數", min_value=1, step=1000, value=1000)
                 
-            submitted = st.form_submit_button("確認建立持倉", use_container_width=True)
-            if submitted and sym:
-                sym_cleaned = clean_symbol_str(sym)
-                mkt_code = "TWO" if "TWO" in mkt else "TW"
-                clean_n = clean_stock_name(name.strip(), sym_cleaned) if name else clean_stock_name(sym_cleaned, sym_cleaned)
-                new_item = {
-                    "symbol": sym_cleaned,
-                    "name": clean_n,
-                    "market": mkt_code,
-                    "entry_date": str(entry_d),
-                    "avg_cost": float(price),
-                    "shares": int(shs),
-                    "record_high": float(price),
-                    "realized_pnl": 0.0,
-                    "history": [
-                        make_log_entry("🌱 初始建倉", price, f"+{int(shs)}", int(shs), "0 元", f"起始成本 ${price}")
-                    ]
-                }
-                portfolio.append(new_item)
+            if st.form_submit_button("確認建立持倉", use_container_width=True) and sym:
+                sym_clean = clean_symbol_str(sym)
+                clean_n = clean_stock_name(name.strip(), sym_clean) if name else clean_stock_name(sym_clean, sym_clean)
+                portfolio.append({
+                    "symbol": sym_clean, "name": clean_n, "market": "TWO" if "TWO" in mkt else "TW",
+                    "entry_date": str(entry_d), "avg_cost": float(price), "shares": int(shs),
+                    "record_high": float(price), "realized_pnl": 0.0,
+                    "history": [make_log_entry("🌱 初始建倉", price, f"+{int(shs)}", int(shs), "0 元", f"起始成本 ${price}")]
+                })
                 save_data(portfolio)
-                st.success(f"已新增 {new_item['name']} ({sym_cleaned})")
+                st.success(f"已新增 {clean_n} ({sym_clean})")
                 st.rerun()
 
     if not portfolio:
@@ -769,24 +443,16 @@ with tab_portfolio:
         st.caption(f"🕒 最新市價更新時間：{st.session_state.last_portfolio_refresh}")
 
         for idx, item in enumerate(portfolio):
-            sym = clean_symbol_str(item["symbol"])
-            name = clean_stock_name(item.get("name", sym), sym)
-            mkt = item["market"]
-            entry_d = item["entry_date"]
-            avg_cost = item["avg_cost"]
-            shares = item["shares"]
-            stored_high = item.get("record_high", avg_cost)
-            realized_pnl = item.get("realized_pnl", 0.0)
-            history_logs = item.get("history", [])
+            sym, name, mkt, entry_d = clean_symbol_str(item["symbol"]), clean_stock_name(item.get("name", ""), item.get("symbol")), item["market"], item["entry_date"]
+            avg_cost, shares, stored_high = item["avg_cost"], item["shares"], item.get("record_high", item["avg_cost"])
+            realized_pnl, history_logs = item.get("realized_pnl", 0.0), item.get("history", [])
 
             info = get_stock_rs_info(sym, market_rankings)
             rs_score = info.get("rs_rating", 50) if info else 50
-            
             cur_price, max_high, ma20, r_5d, r_1m, r_1q, rs_ratio_val, rs_mom_val = fetch_stock_and_momentum(sym, mkt, entry_d)
-            if cur_price is None:
-                cur_price, max_high, ma20 = avg_cost, stored_high, avg_cost
+            if cur_price is None: cur_price, max_high, ma20 = avg_cost, stored_high, avg_cost
 
-            actual_high = max(stored_high, avg_cost, max_high if max_high is not None else stored_high)
+            actual_high = max(stored_high, avg_cost, max_high or stored_high)
             if actual_high != stored_high:
                 portfolio[idx]["record_high"] = actual_high
                 save_data(portfolio)
@@ -795,80 +461,41 @@ with tab_portfolio:
             pullback_pct = round(((actual_high - cur_price) / actual_high) * 100, 1) if actual_high > 0 else 0
             bias_20 = round(((cur_price - ma20) / ma20) * 100, 1) if ma20 > 0 else 0
             
-            try:
-                days_held = (get_tw_now().date() - datetime.strptime(entry_d, "%Y-%m-%d").date()).days
-            except Exception:
-                days_held = 0
+            try: days_held = (get_tw_now().date() - datetime.strptime(entry_d, "%Y-%m-%d").date()).days
+            except Exception: days_held = 0
 
-            status_item = info.copy() if info else {"rs_rating": rs_score, "pattern_badge": "", "r_5d": r_5d}
+            status_item = (info.copy() if info else {"rs_rating": rs_score, "pattern_badge": "", "r_5d": r_5d})
             status_item["rs_ratio"] = rs_ratio_val
             status_badge = get_trend_master_status(status_item)
 
-            max_gain_pct = ((actual_high - avg_cost) / avg_cost) * 100
-            is_breakeven_active = max_gain_pct >= breakeven_trigger_pct
-            initial_stop_price = round(avg_cost * (1 - stop_loss_pct / 100), 2)
-            effective_stop_price = max(initial_stop_price, breakeven_p) if is_breakeven_active else initial_stop_price
-            pullback_price = round(actual_high * (1 - pullback_target_pct / 100), 2)
+            is_breakeven_active = ((actual_high - avg_cost) / avg_cost) * 100 >= breakeven_trigger_pct
+            init_stop = round(avg_cost * (1 - stop_loss_pct / 100), 2)
+            effective_stop = max(init_stop, breakeven_p) if is_breakeven_active else init_stop
+            pullback_p = round(actual_high * (1 - pullback_target_pct / 100), 2)
 
-            status_text = "⚪ 持股續抱中"
-            status_color = "gray"
-
-            if cur_price <= effective_stop_price:
-                if is_breakeven_active:
-                    status_text = f"🛡️ 觸發保本出場線（{effective_stop_price} 元）！強制保護本金零虧損出場"
-                    status_color = "red"
-                else:
-                    status_text = f"🔴 觸發 -{stop_loss_pct}% 停損線（{effective_stop_price} 元）！全數出場"
-                    status_color = "red"
-            elif cur_price <= pullback_price and cur_price > avg_cost:
-                status_text = f"🟣 觸發高點回檔 {pullback_target_pct}%（跌破 {pullback_price} 元）！建議減碼"
-                status_color = "purple"
+            status_text, status_color = "⚪ 持股續抱中", "gray"
+            if cur_price <= effective_stop:
+                status_text = f"🛡️ 觸發保本出場線（{effective_stop} 元）！強制保護本金零虧損出場" if is_breakeven_active else f"🔴 觸發 -{stop_loss_pct}% 停損線（{effective_stop} 元）！全數出場"
+                status_color = "red"
+            elif cur_price <= pullback_p and cur_price > avg_cost:
+                status_text, status_color = f"🟣 觸發高點回檔 {pullback_target_pct}%（跌破 {pullback_p} 元）！建議減碼", "purple"
             elif bias_20 >= bias_threshold:
-                status_text = f"🟠 月線正乖離達 {bias_20}%（過熱）！建議減碼"
-                status_color = "orange"
+                status_text, status_color = f"🟠 月線正乖離達 {bias_20}%（過熱）！建議減碼", "orange"
             elif days_held >= time_stop_days and abs(roi) <= 2.0:
-                status_text = f"⏳ 觸發時間停損（持股已 {days_held} 天，動能停滯）！建議換股"
-                status_color = "orange"
+                status_text, status_color = f"⏳ 觸發時間停損（持股已 {days_held} 天，動能停滯）！建議換股", "orange"
 
             with st.container():
                 st.divider()
                 st.subheader(f"{name} ({sym}.{mkt}) ｜ 📦 {shares:,} 股 ｜ {status_badge}")
                 
-                # 按照指定順序顯示 12 大指標卡 (每行 2 個)
-                # 1. RS Rating 評分 ＆ 2. RS動能比率(20MA)
-                row1_1, row1_2 = st.columns(2)
-                row1_1.metric("RS Rating 評分", f"{rs_score} 分")
-                row1_2.metric(
-                    "RS動能比率(20MA)", 
-                    f"{rs_mom_val}", 
-                    "🔥 短期動能增強" if rs_mom_val >= 100 else "❄️ 動能未達臨界點"
-                )
-
-                # 3. RS_ratio 比率 (60MA) ＆ 4. 近 5 日動能
-                row2_1, row2_2 = st.columns(2)
-                row2_1.metric("RS_ratio 比率 (60MA)", f"{rs_ratio_val}", f"{'🔥 超越大盤' if rs_ratio_val>=100 else '❄️ 落後大盤'}")
-                row2_2.metric("近 5 日動能", f"{r_5d:+}%")
-
-                # 5. 近20日動能 ＆ 6. 近60日動能
-                row3_1, row3_2 = st.columns(2)
-                row3_1.metric("近 20 日動能", f"{r_1m:+}%")
-                row3_2.metric("近 60 日動能", f"{r_1q:+}%")
-
-                # 7. 高點回檔 ＆ 8. 最新市價
-                row4_1, row4_2 = st.columns(2)
-                row4_1.metric("高點回檔", f"${actual_high}", f"-{pullback_pct}%")
-                row4_2.metric("最新市價", f"${cur_price}")
-
-                # 9. 剩餘股數/均價 ＆ 10. 未實現損益
-                row5_1, row5_2 = st.columns(2)
-                row5_1.metric("剩餘股數 / 均價", f"{shares:,} 股", f"均價: ${avg_cost}")
-                row5_2.metric("未實現損益", f"{net_pnl:+,} 元", f"{roi:+}%")
-
-                # 11. 累積已實現損益 ＆ 12. 停損停利線
-                row6_1, row6_2 = st.columns(2)
-                row6_1.metric("累積已實現損益", f"{realized_pnl:+,} 元")
-                stop_label = "🛡️ 保本停損線" if is_breakeven_active else f"🔴 初始停損 (-{stop_loss_pct}%)"
-                row6_2.metric(stop_label, f"${effective_stop_price}")
+                render_metric_grid([
+                    (("RS Rating 評分", f"{rs_score} 分", None), ("RS動能比率(20MA)", f"{rs_mom_val}", "🔥 短期動能增強" if rs_mom_val >= 100 else "❄️ 動能未達臨界點")),
+                    (("RS_ratio 比率 (60MA)", f"{rs_ratio_val}", "🔥 超越大盤" if rs_ratio_val >= 100 else "❄️ 落後大盤"), ("近 5 日動能", f"{r_5d:+}%", None)),
+                    (("近 20 日動能", f"{r_1m:+}%", None), ("近 60 日動能", f"{r_1q:+}%", None)),
+                    (("高點回檔", f"${actual_high}", f"-{pullback_pct}%"), ("最新市價", f"${cur_price}", None)),
+                    (("剩餘股數 / 均價", f"{shares:,} 股", f"均價: ${avg_cost}"), ("未實現損益", f"{net_pnl:+,} 元", f"{roi:+}%")),
+                    (("累積已實現損益", f"{realized_pnl:+,} 元", None), ("🛡️ 保本停損線" if is_breakeven_active else f"🔴 初始停損 (-{stop_loss_pct}%)", f"${effective_stop}", None))
+                ])
 
                 st.markdown(f"**風控狀態：** :{status_color}[{status_text}]")
 
@@ -881,10 +508,8 @@ with tab_portfolio:
                     buf = round(((cur_price - sim_avg) / cur_price) * 100, 1)
                     st.caption(f"試算新均價：**${sim_avg}** ｜ 安全緩衝：**{buf:+}%**")
                     if st.button("確認加碼", key=f"btn_add_{idx}", use_container_width=True):
-                        new_log = make_log_entry("🔼 順勢加碼", add_p, f"+{int(add_s)}", new_tot, "-", f"新均價 ${sim_avg} (緩衝 {buf:+}%)")
-                        portfolio[idx].setdefault("history", []).append(new_log)
-                        portfolio[idx]["shares"] = new_tot
-                        portfolio[idx]["avg_cost"] = sim_avg
+                        portfolio[idx].setdefault("history", []).append(make_log_entry("🔼 順勢加碼", add_p, f"+{int(add_s)}", new_tot, "-", f"新均價 ${sim_avg} (緩衝 {buf:+}%)"))
+                        portfolio[idx]["shares"], portfolio[idx]["avg_cost"] = new_tot, sim_avg
                         save_data(portfolio)
                         st.rerun()
 
@@ -896,16 +521,13 @@ with tab_portfolio:
                     st.caption(f"試算本次損益：**{sim_red_pnl:+,} 元** ({sim_red_roi:+}%)")
                     if st.button("確認減碼", key=f"btn_red_{idx}", use_container_width=True):
                         new_shares = shares - int(red_s)
-                        current_realized = item.get("realized_pnl", 0.0)
-                        new_log = make_log_entry("🔽 分批減碼", red_p, f"-{int(red_s)}", new_shares, f"{sim_red_pnl:+,} 元", f"報酬率 {sim_red_roi:+}%")
-                        portfolio[idx].setdefault("history", []).append(new_log)
+                        portfolio[idx].setdefault("history", []).append(make_log_entry("🔽 分批減碼", red_p, f"-{int(red_s)}", new_shares, f"{sim_red_pnl:+,} 元", f"報酬率 {sim_red_roi:+}%"))
                         if new_shares > 0:
                             portfolio[idx]["shares"] = new_shares
-                            portfolio[idx]["realized_pnl"] = current_realized + sim_red_pnl
-                            save_data(portfolio)
+                            portfolio[idx]["realized_pnl"] = item.get("realized_pnl", 0.0) + sim_red_pnl
                         else:
                             portfolio.pop(idx)
-                            save_data(portfolio)
+                        save_data(portfolio)
                         st.rerun()
 
                     st.divider()
@@ -914,23 +536,15 @@ with tab_portfolio:
                         save_data(portfolio)
                         st.rerun()
 
-                if len(history_logs) > 0:
+                if history_logs:
                     with st.expander(f"📜 {name} 交易歷程", expanded=False):
-                        df_h = pd.DataFrame(history_logs)
-                        st.dataframe(df_h, use_container_width=True, hide_index=True)
+                        st.dataframe(pd.DataFrame(history_logs), use_container_width=True, hide_index=True)
 
-# ==========================================
-# 分頁 2：全市場 RS 排行榜與個股查詢
-# ==========================================
 with tab_leaderboard:
     st.subheader("🔍 個股查詢")
-    search_query = st.text_input(
-        "輸入股票代號或名稱查詢（支援單檔或多檔，多檔請用空白、逗號或換行分隔）", 
-        placeholder="例如：2330 聯一光 3441 2454"
-    )
+    search_query = st.text_input("輸入股票代號或名稱查詢（支援單檔或多檔，多檔請用空白、逗號或換行分隔）", placeholder="例如：2330 聯一光 3441 2454")
     
     if search_query:
-        # 分割多個關鍵字（支援空白、逗號、分號、頓號、換行）
         raw_tokens = [tok.strip() for tok in re.split(r"[\s,;，、\n]+", search_query) if tok.strip()]
         matched_dict = {}
 
@@ -938,169 +552,83 @@ with tab_leaderboard:
             q_token = clean_symbol_str(tok).upper()
             found = False
             for item in market_rankings:
-                sym_item = clean_symbol_str(item.get("symbol", "")).upper()
-                name_item = str(item.get("name", "")).upper()
-                if q_token == sym_item or q_token == name_item or q_token in sym_item or q_token in name_item:
-                    matched_dict[sym_item] = item
+                s_i, n_i = clean_symbol_str(item.get("symbol", "")).upper(), str(item.get("name", "")).upper()
+                if q_token in (s_i, n_i) or q_token in s_i or q_token in n_i:
+                    matched_dict[s_i] = item
                     found = True
-            
-            # 若排行榜中無記錄，則嘗試直接構造 yfinance 代碼查詢
             if not found and (q_token.isdigit() or len(q_token) >= 2):
                 std_n = clean_stock_name(q_token, q_token)
-                matched_dict[q_token] = {
-                    "symbol": q_token,
-                    "name": std_n if std_n != q_token else q_token,
-                    "market": "TW",
-                    "rs_rating": 50,
-                    "score": 0.0
-                }
+                matched_dict[q_token] = {"symbol": q_token, "name": std_n if std_n != q_token else q_token, "market": "TW", "rs_rating": 50, "score": 0.0}
 
         matched = list(matched_dict.values())
-        
         if matched:
             st.write(f"找到 **{len(matched)}** 筆符合標的：")
-            
-            compare_rows = []
-            detailed_data = []
+            compare_rows, detailed_data = [], []
 
             for m in matched:
-                score = m.get("rs_rating", 50)
-                m_type = m.get("market", "上市/上櫃")
-                name = clean_stock_name(m.get("name", m.get("symbol")), m.get("symbol"))
-                sym = clean_symbol_str(m.get("symbol"))
-                
-                cur_p, _, _, q_r5, q_r20, q_r60, query_rs_ratio, query_rs_mom = fetch_stock_and_momentum(
-                    sym, m_type, get_tw_now_str("%Y-%m-%d")
-                )
+                score, m_type = m.get("rs_rating", 50), m.get("market", "上市/上櫃")
+                sym, name = clean_symbol_str(m.get("symbol")), clean_stock_name(m.get("name", m.get("symbol")), m.get("symbol"))
+                cur_p, _, _, q_r5, q_r20, q_r60, query_rs_ratio, query_rs_mom = fetch_stock_and_momentum(sym, m_type, get_tw_now_str("%Y-%m-%d"))
                 
                 m_eval = m.copy()
                 m_eval["rs_ratio"] = query_rs_ratio
                 badge_style = get_trend_master_status(m_eval)
 
-                # 儲存詳細資訊供下方卡片展示
-                detailed_data.append({
-                    "name": name,
-                    "sym": sym,
-                    "m_type": m_type,
-                    "score": score,
-                    "query_rs_mom": query_rs_mom,
-                    "query_rs_ratio": query_rs_ratio,
-                    "q_r5": q_r5,
-                    "q_r20": q_r20,
-                    "q_r60": q_r60,
-                    "badge_style": badge_style
-                })
-
-                # 儲存比較表格數據（依指定欄位順序排列）
+                detailed_data.append({"name": name, "sym": sym, "m_type": m_type, "score": score, "query_rs_mom": query_rs_mom, "query_rs_ratio": query_rs_ratio, "q_r5": q_r5, "q_r20": q_r20, "q_r60": q_r60, "badge_style": badge_style})
                 compare_rows.append({
-                    "股票代號": sym,
-                    "股票名稱": name,
-                    "市場別": m_type,
-                    "目前市價": f"${cur_p:.2f}" if cur_p is not None else "-",
-                    "RS 評分": score,
-                    "RS 動能 (20MA)": query_rs_mom,
-                    "RS_ratio (60MA)": query_rs_ratio,
-                    "5日漲跌幅 (%)": f"{q_r5:+0.2f}%",
-                    "20日漲跌幅 (%)": f"{q_r20:+0.2f}%",
-                    "60日漲跌幅 (%)": f"{q_r60:+0.2f}%",
-                    "動能狀態": badge_style
+                    "股票代號": sym, "股票名稱": name, "市場別": m_type, "目前市價": f"${cur_p:.2f}" if cur_p is not None else "-",
+                    "RS 評分": score, "RS 動能 (20MA)": query_rs_mom, "RS_ratio (60MA)": query_rs_ratio,
+                    "5日漲跌幅 (%)": f"{q_r5:+0.2f}%", "20日漲跌幅 (%)": f"{q_r20:+0.2f}%", "60日漲跌幅 (%)": f"{q_r60:+0.2f}%", "動能狀態": badge_style
                 })
 
-            # 顯示比較數值表格
             st.markdown("#### 📊 查詢標的數值比較表")
-            compare_df = pd.DataFrame(compare_rows)
-            st.dataframe(compare_df, use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(compare_rows), use_container_width=True, hide_index=True)
             st.divider()
 
-            # 顯示詳細指標卡片
             st.markdown("#### 📌 查詢標的詳細指標")
             for d in detailed_data:
-                r_col0 = st.columns(1)[0]
-                r_col0.metric("標的與市場", f"{d['name']} ({d['sym']})", f"{d['m_type']} ｜ {d['badge_style']}")
-
-                r_col1, r_col2 = st.columns(2)
-                r_col1.metric("RS Rating 評分", f"{d['score']} 分")
-                r_col2.metric(
-                    "RS動能比率(20MA)", 
-                    f"{d['query_rs_mom']}", 
-                    "🔥 短期動能增強" if d['query_rs_mom'] >= 100 else "❄️ 短期動能減弱"
-                )
-
-                r_col3, r_col4 = st.columns(2)
-                r_col3.metric("RS_ratio (60MA)", f"{d['query_rs_ratio']}", f"{'🔥 大盤領先者' if d['query_rs_ratio']>=100 else '❄️ 大盤落後者'}")
-                r_col4.metric("近 5 日動能", f"{d['q_r5']:+}%")
-
-                r_col5, r_col6 = st.columns(2)
-                r_col5.metric("近 20 日動能", f"{d['q_r20']:+}%")
-                r_col6.metric("近 60 日動能", f"{d['q_r60']:+}%")
-
+                st.columns(1)[0].metric("標的與市場", f"{d['name']} ({d['sym']})", f"{d['m_type']} ｜ {d['badge_style']}")
+                render_metric_grid([
+                    (("RS Rating 評分", f"{d['score']} 分", None), ("RS動能比率(20MA)", f"{d['query_rs_mom']}", "🔥 短期動能增強" if d['query_rs_mom'] >= 100 else "❄️ 短期動能減弱")),
+                    (("RS_ratio (60MA)", f"{d['query_rs_ratio']}", "🔥 大盤領先者" if d['query_rs_ratio'] >= 100 else "❄️ 大盤落後者"), ("近 5 日動能", f"{d['q_r5']:+}%", None)),
+                    (("近 20 日動能", f"{d['q_r20']:+}%", None), ("近 60 日動能", f"{d['q_r60']:+}%", None))
+                ])
                 st.divider()
         else:
             st.error(f"查無符合「{search_query}」的標的，請確認代號或名稱是否正確。")
 
     st.subheader("🏆 強勢股排行榜")
-    
     df_raw = pd.DataFrame(market_rankings)
     if not df_raw.empty:
-        if "name" not in df_raw.columns:
-            df_raw["name"] = df_raw["symbol"]
-        if "market" not in df_raw.columns:
-            df_raw["market"] = "上市"
-        if "rs_ratio" not in df_raw.columns:
-            df_raw["rs_ratio"] = 100.0
-        if "rs_momentum" not in df_raw.columns:
-            df_raw["rs_momentum"] = 100.0
+        for c, default_v in [("name", df_raw.get("symbol")), ("market", "上市"), ("rs_ratio", 100.0), ("rs_momentum", 100.0)]:
+            if c not in df_raw.columns: df_raw[c] = default_v
 
         f1, f2 = st.columns(2)
-        with f1:
-            min_rs = st.number_input("最低 RS 門檻篩選", min_value=1, max_value=99, value=85, step=1)
-        with f2:
-            market_filter = st.multiselect("市場別篩選", ["上市", "上櫃"], default=["上市", "上櫃"])
+        min_rs = f1.number_input("最低 RS 門檻篩選", 1, 99, 85, 1)
+        market_filter = f2.multiselect("市場別篩選", ["上市", "上櫃"], default=["上市", "上櫃"])
 
-        filtered_df = df_raw[
-            (df_raw["rs_rating"] >= min_rs) & 
-            (df_raw["market"].isin(market_filter))
-        ].copy()
-
+        filtered_df = df_raw[(df_raw["rs_rating"] >= min_rs) & (df_raw["market"].isin(market_filter))].copy()
         filtered_df["name"] = filtered_df.apply(lambda r: clean_stock_name(r.get("name"), r.get("symbol")), axis=1)
         filtered_df = filtered_df.sort_values(by="rs_rating", ascending=False)
         filtered_df["順勢操作狀態"] = filtered_df.apply(get_trend_master_status, axis=1)
 
         display_df = filtered_df[["rs_rating", "symbol", "name", "market", "score", "rs_ratio", "rs_momentum", "順勢操作狀態"]].rename(columns={
-            "rs_rating": "RS Rating (PR)",
-            "股票代碼": "股票代碼",
-            "name": "中文名稱",
-            "market": "上市櫃",
-            "score": "綜合動能得分",
-            "rs_ratio": "RS_ratio (60MA)",
-            "rs_momentum": "RS動能比率(20MA)"
+            "rs_rating": "RS Rating (PR)", "name": "中文名稱", "market": "上市櫃", "score": "綜合動能得分",
+            "rs_ratio": "RS_ratio (60MA)", "rs_momentum": "RS動能比率(20MA)"
         })
-
         st.caption(f"共計 **{len(display_df)}** 檔標的符合條件（RS ≥ {min_rs}）：")
-        st.dataframe(
-            display_df,
-            use_container_width=True,
-            hide_index=True,
-            height=450
-        )
+        st.dataframe(display_df, use_container_width=True, hide_index=True, height=450)
     else:
         st.info("尚無排名資料，請先確認 market_rankings.json 檔案是否存在。")
 
-# ==========================================
-# 分頁 3：大盤指標
-# ==========================================
 with tab_market_breadth:
     st.subheader("📊 大盤指標")
-
     b_col1, b_col2 = st.columns(2)
-    with b_col1:
-        mkt_view = st.selectbox("市場選擇", ["上市 (TWSE)", "上櫃 (TPEX)"], index=0)
-    with b_col2:
-        period_view = st.selectbox("時間跨度", ["近 20 個交易日", "近 60 個交易日", "近 120 個交易日"], index=1)
+    mkt_view = b_col1.selectbox("市場選擇", ["上市 (TWSE)", "上櫃 (TPEX)"], index=0)
+    period_view = b_col2.selectbox("時間跨度", ["近 20 個交易日", "近 60 個交易日", "近 120 個交易日"], index=1)
 
     mkt_key = "TW" if "上市" in mkt_view else "TWO"
-    days_map = {"近 20 個交易日": 20, "近 60 個交易日": 60, "近 120 個交易日": 120}
-    show_days = days_map[period_view]
+    show_days = {"近 20 個交易日": 20, "近 60 個交易日": 60, "近 120 個交易日": 120}[period_view]
 
     with st.spinner("正在計算全市場大盤寬度與動能指標數據..."):
         breadth_df = compute_market_breadth_data(market_rankings, mkt_key)
@@ -1109,8 +637,7 @@ with tab_market_breadth:
         st.warning("⚠️ 暫時無法取得大盤寬度資料，請確認網路連線或已載入全市場標的清單。")
     else:
         plot_df = breadth_df.tail(show_days)
-        latest = plot_df.iloc[-1]
-        prev = plot_df.iloc[-2] if len(plot_df) >= 2 else latest
+        latest, prev = plot_df.iloc[-1], plot_df.iloc[-2] if len(plot_df) >= 2 else plot_df.iloc[-1]
 
         st.markdown("##### 📌 當日即時總覽")
         k1, k2, k3, k4, k5 = st.columns(5)
@@ -1122,116 +649,76 @@ with tab_market_breadth:
         k5.metric("大盤與 60MA 距離", f"{dist_val:+.2f}%", f"{'🔥 季線之上' if dist_val>=0 else '❄️ 季線之下'}")
 
         st.divider()
-
-        mobile_chart_config = {
-            "scrollZoom": False,
-            "displayModeBar": False,
-            "doubleClick": False
-        }
-
-        chart_layout = dict(
-            hovermode="x unified",
-            margin=dict(l=40, r=20, t=40, b=30),
-            dragmode=False,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            font=dict(size=12)
-        )
+        mobile_cfg = {"scrollZoom": False, "displayModeBar": False, "doubleClick": False}
+        layout = dict(hovermode="x unified", margin=dict(l=40, r=20, t=40, b=30), dragmode=False, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), font=dict(size=12))
 
         # 1. 均線覆蓋率
         st.markdown("#### 1. 均線覆蓋率 (%)")
-        fig1 = go.Figure()
-        fig1.add_trace(go.Scatter(x=plot_df.index, y=plot_df["above_20ma"], mode="lines", name="站上 20MA (月線)", line=dict(color="#FF5722", width=2)))
-        fig1.add_trace(go.Scatter(x=plot_df.index, y=plot_df["above_60ma"], mode="lines", name="站上 60MA (季線)", line=dict(color="#2196F3", width=2)))
-        fig1.add_trace(go.Scatter(x=plot_df.index, y=plot_df["above_240ma"], mode="lines", name="站上 240MA (年線)", line=dict(color="#4CAF50", width=2)))
+        fig1 = go.Figure([
+            go.Scatter(x=plot_df.index, y=plot_df["above_20ma"], mode="lines", name="站上 20MA (月線)", line=dict(color="#FF5722", width=2)),
+            go.Scatter(x=plot_df.index, y=plot_df["above_60ma"], mode="lines", name="站上 60MA (季線)", line=dict(color="#2196F3", width=2)),
+            go.Scatter(x=plot_df.index, y=plot_df["above_240ma"], mode="lines", name="站上 240MA (年線)", line=dict(color="#4CAF50", width=2))
+        ])
         fig1.add_hline(y=50, line_dash="dash", line_color="gray", annotation_text="50% 多空分水嶺")
-        fig1.update_layout(chart_layout, yaxis=dict(title="比例 (%)", range=[0, 100], fixedrange=True), xaxis=dict(fixedrange=True))
-        st.plotly_chart(fig1, use_container_width=True, config=mobile_chart_config)
+        fig1.update_layout(layout, yaxis=dict(title="比例 (%)", range=[0, 100], fixedrange=True), xaxis=dict(fixedrange=True))
+        st.plotly_chart(fig1, use_container_width=True, config=mobile_cfg)
 
-        # 2. 創新高 / 創新低指標與新高新低差
+        # 2. 創新高/創新低指標
         st.markdown("#### 2. 52週創新高/新低指標與淨差")
         fig2 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08, subplot_titles=("創新高 / 創新低比例 (%) 與家數", "新高新低差 (Net New Highs/Lows)"))
         fig2.add_trace(go.Scatter(x=plot_df.index, y=plot_df["new_high_ratio"], mode="lines", name="創新高比例 (%)", line=dict(color="#E91E63", width=2)), row=1, col=1)
         fig2.add_trace(go.Scatter(x=plot_df.index, y=plot_df["new_low_ratio"], mode="lines", name="創新低比例 (%)", line=dict(color="#00BCD4", width=2)), row=1, col=1)
-        
-        bar_colors = ["#4CAF50" if v >= 0 else "#F44336" for v in plot_df["net_high_low"]]
-        fig2.add_trace(go.Bar(x=plot_df.index, y=plot_df["net_high_low"], name="新高新低家數差", marker_color=bar_colors), row=2, col=1)
+        fig2.add_trace(go.Bar(x=plot_df.index, y=plot_df["net_high_low"], name="新高新低家數差", marker_color=["#4CAF50" if v >= 0 else "#F44336" for v in plot_df["net_high_low"]]), row=2, col=1)
         fig2.add_hline(y=0, line_dash="dash", line_color="gray", row=2, col=1)
-        fig2.update_layout(chart_layout, height=520)
+        fig2.update_layout(layout, height=520)
         fig2.update_xaxes(fixedrange=True)
         fig2.update_yaxes(fixedrange=True)
-        st.plotly_chart(fig2, use_container_width=True, config=mobile_chart_config)
+        st.plotly_chart(fig2, use_container_width=True, config=mobile_cfg)
 
-        # 3. 進化版騰落指標體系 (大盤背離 / 滾動AD比率 / 麥克連震盪指標)
+        # 3. 進化版騰落指標
         st.markdown("#### 4. 進化版騰落指標 (大盤收盤與背離警示 ｜ 滾動 AD 比率 ｜ McClellan 震盪指標)")
-        fig3 = make_subplots(
-            rows=3, cols=1,
-            shared_xaxes=True,
-            vertical_spacing=0.07,
-            subplot_titles=(
-                f"{mkt_view} 指數收盤價 ＆ 背離訊號監測",
-                f"20 日滾動騰落比率 (Rolling AD Ratio %) ｜ 最新: {latest['rolling_ad_ratio']:.1f}%",
-                f"麥克連震盪指標 (McClellan Oscillator) ｜ 最新: {latest['mcclellan_osc']:+.1f}"
-            )
-        )
+        fig3 = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.07, subplot_titles=(
+            f"{mkt_view} 指數收盤價 ＆ 背離訊號監測",
+            f"20 日滾動騰落比率 (Rolling AD Ratio %) ｜ 最新: {latest['rolling_ad_ratio']:.1f}%",
+            f"麥克連震盪指標 (McClellan Oscillator) ｜ 最新: {latest['mcclellan_osc']:+.1f}"
+        ))
+        fig3.add_trace(go.Scatter(x=plot_df.index, y=plot_df["close"], mode="lines", name="大盤指數收盤", line=dict(color="#212121", width=2)), row=1, col=1)
+        bear_pts, bull_pts = plot_df[plot_df["bearish_divergence"]], plot_df[plot_df["bullish_divergence"]]
+        if not bear_pts.empty: fig3.add_trace(go.Scatter(x=bear_pts.index, y=bear_pts["close"], mode="markers", name="⚠️ 頂部背離 (警示風險)", marker=dict(symbol="triangle-down", size=11, color="#D32F2F")), row=1, col=1)
+        if not bull_pts.empty: fig3.add_trace(go.Scatter(x=bull_pts.index, y=bull_pts["close"], mode="markers", name="🌱 底部背離 (醞釀反彈)", marker=dict(symbol="triangle-up", size=11, color="#388E3C")), row=1, col=1)
 
-        fig3.add_trace(
-            go.Scatter(x=plot_df.index, y=plot_df["close"], mode="lines", name="大盤指數收盤", line=dict(color="#212121", width=2)),
-            row=1, col=1
-        )
-        
-        bear_pts = plot_df[plot_df["bearish_divergence"]]
-        bull_pts = plot_df[plot_df["bullish_divergence"]]
-
-        if not bear_pts.empty:
-            fig3.add_trace(
-                go.Scatter(x=bear_pts.index, y=bear_pts["close"], mode="markers", name="⚠️ 頂部背離 (警示風險)", marker=dict(symbol="triangle-down", size=11, color="#D32F2F")),
-                row=1, col=1
-            )
-        if not bull_pts.empty:
-            fig3.add_trace(
-                go.Scatter(x=bull_pts.index, y=bull_pts["close"], mode="markers", name="🌱 底部背離 (醞釀反彈)", marker=dict(symbol="triangle-up", size=11, color="#388E3C")),
-                row=1, col=1
-            )
-
-        fig3.add_trace(
-            go.Scatter(x=plot_df.index, y=plot_df["rolling_ad_ratio"], mode="lines", name="滾動 AD 比率 (%)", line=dict(color="#673AB7", width=2.2)),
-            row=2, col=1
-        )
+        fig3.add_trace(go.Scatter(x=plot_df.index, y=plot_df["rolling_ad_ratio"], mode="lines", name="滾動 AD 比率 (%)", line=dict(color="#673AB7", width=2.2)), row=2, col=1)
         fig3.add_hline(y=75, line_dash="dash", line_color="#E91E63", annotation_text="75% 過熱超買", annotation_position="top right", row=2, col=1)
         fig3.add_hline(y=50, line_dash="dot", line_color="gray", annotation_text="50% 多空中軸", annotation_position="top right", row=2, col=1)
         fig3.add_hline(y=25, line_dash="dash", line_color="#00BCD4", annotation_text="25% 冰凍超賣", annotation_position="bottom right", row=2, col=1)
 
-        mcc_colors = ["#F44336" if v >= 0 else "#4CAF50" for v in plot_df["mcclellan_osc"]]
-        fig3.add_trace(
-            go.Bar(x=plot_df.index, y=plot_df["mcclellan_osc"], name="McClellan 震盪動能", marker_color=mcc_colors),
-            row=3, col=1
-        )
+        fig3.add_trace(go.Bar(x=plot_df.index, y=plot_df["mcclellan_osc"], name="McClellan 震盪動能", marker_color=["#F44336" if v >= 0 else "#4CAF50" for v in plot_df["mcclellan_osc"]]), row=3, col=1)
         fig3.add_hline(y=0, line_dash="solid", line_color="black", row=3, col=1)
-
-        fig3.update_layout(chart_layout, height=780)
+        fig3.update_layout(layout, height=780)
         fig3.update_xaxes(fixedrange=True)
         fig3.update_yaxes(title_text="指數點位", row=1, col=1, fixedrange=True)
         fig3.update_yaxes(title_text="比率 (%)", range=[0, 100], row=2, col=1, fixedrange=True)
         fig3.update_yaxes(title_text="震盪數值", row=3, col=1, fixedrange=True)
-        st.plotly_chart(fig3, use_container_width=True, config=mobile_chart_config)
+        st.plotly_chart(fig3, use_container_width=True, config=mobile_cfg)
 
-        # 4. 均線多頭排列比例
+        # 4. 均線多頭排列
         st.markdown("#### 5. 均線多頭排列比例 (%)")
-        fig4 = go.Figure()
-        fig4.add_trace(go.Scatter(x=plot_df.index, y=plot_df["short_bull_ratio"], mode="lines", name="短均多頭排列 (收盤>20MA>60MA)", line=dict(color="#9C27B0", width=2)))
-        fig4.add_trace(go.Scatter(x=plot_df.index, y=plot_df["long_bull_ratio"], mode="lines", name="長均多頭排列 (收盤>20MA>60MA>120MA>240MA)", line=dict(color="#3F51B5", width=2)))
+        fig4 = go.Figure([
+            go.Scatter(x=plot_df.index, y=plot_df["short_bull_ratio"], mode="lines", name="短均多頭排列 (收盤>20MA>60MA)", line=dict(color="#9C27B0", width=2)),
+            go.Scatter(x=plot_df.index, y=plot_df["long_bull_ratio"], mode="lines", name="長均多頭排列 (收盤>20MA>60MA>120MA>240MA)", line=dict(color="#3F51B5", width=2))
+        ])
         fig4.add_hline(y=50, line_dash="dash", line_color="gray", annotation_text="50% 多空分水嶺")
-        fig4.update_layout(chart_layout, yaxis=dict(title="多頭排列比例 (%)", range=[0, 100], fixedrange=True), xaxis=dict(fixedrange=True))
-        st.plotly_chart(fig4, use_container_width=True, config=mobile_chart_config)
+        fig4.update_layout(layout, yaxis=dict(title="多頭排列比例 (%)", range=[0, 100], fixedrange=True), xaxis=dict(fixedrange=True))
+        st.plotly_chart(fig4, use_container_width=True, config=mobile_cfg)
 
-        # 5. 大盤現價與 60日 MA 距離 (%)
+        # 5. 大盤現價與 60MA 距離
         st.markdown(f"#### 6. 大盤現價與 60日 MA 距離 (%) ｜ 今日最新數值：**{latest['dist_60ma_pct']:+.2f}%**")
-        fig5 = go.Figure()
-        dist_bar_colors = ["#F44336" if v >= 0 else "#4CAF50" for v in plot_df["dist_60ma_pct"]]
-        fig5.add_trace(go.Bar(x=plot_df.index, y=plot_df["dist_60ma_pct"], name="季線乖離距離 (%)", marker_color=dist_bar_colors))
-        fig5.add_trace(go.Scatter(x=plot_df.index, y=plot_df["dist_60ma_pct"], mode="lines+markers", name="趨勢軌跡", line=dict(color="#1976D2", width=1.5), marker=dict(size=4)))
+        fig5 = go.Figure([
+            go.Bar(x=plot_df.index, y=plot_df["dist_60ma_pct"], name="季線乖離距離 (%)", marker_color=["#F44336" if v >= 0 else "#4CAF50" for v in plot_df["dist_60ma_pct"]]),
+            go.Scatter(x=plot_df.index, y=plot_df["dist_60ma_pct"], mode="lines+markers", name="趨勢軌跡", line=dict(color="#1976D2", width=1.5), marker=dict(size=4))
+        ])
         fig5.add_hline(y=0, line_dash="solid", line_color="black")
         fig5.add_hline(y=10, line_dash="dash", line_color="#E91E63", annotation_text="+10% 正向過熱區", annotation_position="top right")
         fig5.add_hline(y=-10, line_dash="dash", line_color="#00BCD4", annotation_text="-10% 負向超跌區", annotation_position="bottom right")
-        fig5.update_layout(chart_layout, yaxis=dict(title="距離 (%)", fixedrange=True), xaxis=dict(fixedrange=True))
-        st.plotly_chart(fig5, use_container_width=True, config=mobile_chart_config)
+        fig5.update_layout(layout, yaxis=dict(title="距離 (%)", fixedrange=True), xaxis=dict(fixedrange=True))
+        st.plotly_chart(fig5, use_container_width=True, config=mobile_cfg)
