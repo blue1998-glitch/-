@@ -489,7 +489,6 @@ with tab_leaderboard:
                 score, m_type = m.get("rs_rating", 50), m.get("market", "上市/上櫃")
                 sym, name = clean_sym(m.get("symbol")), clean_stock_name(m.get("name", m.get("symbol")), m.get("symbol"))
                 
-                # 同步數值：若排行榜已存在該標的，直接使用資料庫計算值，確保與排行榜數值一致
                 cur_p, _, _, q_r5, q_r20, q_r60, query_rs_ratio, query_rs_mom = fetch_stock_and_momentum(sym, m_type, get_tw_now_str("%Y-%m-%d"))
                 if "rs_ratio" in m: query_rs_ratio = m["rs_ratio"]
                 if "rs_momentum" in m: query_rs_mom = m["rs_momentum"]
@@ -530,15 +529,16 @@ with tab_leaderboard:
         display_df = filtered_df[["rs_rating", "symbol", "name", "market", "score", "rs_ratio", "rs_momentum", "順勢操作狀態"]].rename(columns={"rs_rating": "RS Rating (PR)", "symbol": "股票代號", "name": "中文名稱", "market": "上市櫃", "score": "綜合動能得分", "rs_ratio": "RS_ratio (60MA)", "rs_momentum": "RS動能比率(20MA)"})
         st.caption(f"共計 **{len(display_df)}** 檔標的符合條件（RS ≥ {min_rs}） ｜ 💡 **提示：勾選表格左側任意個股，上方會自動帶出詳細分析**")
         
+        # 使用精確固定像素寬度，徹底消除橫向滑動時的欄位重疊與錯位
         col_cfg = {
-            "RS Rating (PR)": st.column_config.NumberColumn(width="small"),
-            "股票代號": st.column_config.TextColumn(width="small"),
-            "中文名稱": st.column_config.TextColumn(width="medium"),
-            "上市櫃": st.column_config.TextColumn(width="small"),
-            "綜合動能得分": st.column_config.NumberColumn(width="small", format="%.2f"),
-            "RS_ratio (60MA)": st.column_config.NumberColumn(width="small", format="%.2f"),
-            "RS動能比率(20MA)": st.column_config.NumberColumn(width="small", format="%.2f"),
-            "順勢操作狀態": st.column_config.TextColumn(width="large")
+            "RS Rating (PR)": st.column_config.NumberColumn(width=110),
+            "股票代號": st.column_config.TextColumn(width=90),
+            "中文名稱": st.column_config.TextColumn(width=120),
+            "上市櫃": st.column_config.TextColumn(width=80),
+            "綜合動能得分": st.column_config.NumberColumn(width=110, format="%.2f"),
+            "RS_ratio (60MA)": st.column_config.NumberColumn(width=130, format="%.2f"),
+            "RS動能比率(20MA)": st.column_config.NumberColumn(width=140, format="%.2f"),
+            "順勢操作狀態": st.column_config.TextColumn(width=340)
         }
         
         event = st.dataframe(display_df, column_config=col_cfg, use_container_width=True, hide_index=True, height=450, on_select="rerun", selection_mode="single-row", key="rank_df_table")
