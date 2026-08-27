@@ -330,7 +330,7 @@ with tab_portfolio:
                 clean_n = clean_stock_name(name.strip(), sym_clean) if name else clean_stock_name(sym_clean, sym_clean)
                 portfolio.append({
                     "symbol": sym_clean, "name": clean_n, "market": "TWO" if "TWO" in mkt else "TW",
-                "entry_date": str(entry_d), "avg_cost": float(price), "shares": int(shs),
+                    "entry_date": str(entry_d), "avg_cost": float(price), "shares": int(shs),
                     "record_high": float(price), "realized_pnl": 0.0, "status_override": "",
                     "history": [make_log_entry("🌱 初始建倉", price, f"+{int(shs)}", int(shs), "0 元", f"起始成本 ${price}")]
                 })
