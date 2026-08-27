@@ -10,10 +10,8 @@ DATA_FILE, TW_TZ = "portfolio.json", timezone(timedelta(hours=8))
 get_tw_now = lambda: datetime.now(TW_TZ)
 get_tw_now_str = lambda fmt="%Y-%m-%d %H:%M:%S": get_tw_now().strftime(fmt)
 
-if "last_portfolio_refresh" not in st.session_state:
-    st.session_state.last_portfolio_refresh = get_tw_now_str()
-if "search_input_val" not in st.session_state:
-    st.session_state.search_input_val = ""
+for k, v in [("last_portfolio_refresh", get_tw_now_str()), ("search_input_val", "")]:
+    st.session_state.setdefault(k, v)
 
 def _load_names():
     try:
@@ -30,7 +28,7 @@ def clean_stock_name(name, symbol=None):
     if sym in OFFICIAL_STOCK_NAMES: return OFFICIAL_STOCK_NAMES[sym]
     if not name: return sym
     raw = str(name).strip()
-    for _, std_n in OFFICIAL_STOCK_NAMES.items():
+    for std_n in OFFICIAL_STOCK_NAMES.values():
         if (raw == std_n or raw.startswith(std_n)) and len(raw) <= len(std_n) + 12: return std_n
     for suf in ["股份有限公司台灣分公司", "股份有限公司", "有限股份公司", "有限公司", "(股)公司", "（股）公司"]:
         raw = raw.replace(suf, "")
@@ -88,7 +86,9 @@ def calculate_rs_ratio_series(target_df, benchmark_df, rs_w=60, mom_w=20):
     except Exception: return pd.DataFrame()
 
 def get_trend_master_status(row):
-    rs, badge, r_5d = float(row.get("rs_rating", 50) or 50), str(row.get("pattern_badge", "")), float(row.get("r_5d", 0.0) or 0.0)
+    rs = float(row.get("rs_rating", 50) or 50)
+    badge = str(row.get("pattern_badge", "") or "")
+    r_5d = float(row.get("r_5d", 0.0) or 0.0)
     rs_ratio = float(row.get("rs_ratio", 100.0) or 100.0)
     p = "🔥[強勢] " if rs_ratio >= 100.0 else "❄️[弱勢] "
     if rs >= 95: sub = "👑 頂級領袖・突破新高 (主力首選)" if "新高" in badge or r_5d >= 10.0 else ("🎯 頂級VCP・即將噴出 (極限強勢)" if "VCP" in badge else "🚀 極致飆股・主升奔馳 (最強5%)")
@@ -188,9 +188,12 @@ def load_market_data():
         item["symbol"], item["name"] = clean_sym(item.get("symbol", "")), clean_stock_name(item.get("name"), item.get("symbol"))
         mkt_key = "TWO" if "上櫃" in str(item.get("market", "")) or "TWO" in str(item.get("market", "")).upper() else "TW"
         bm_info = bm_dict.get(mkt_key, bm_dict["TW"])
-        bm_r60, bm_r20, s_r60, s_r20 = bm_info.get("r_60d", 0.0), bm_info.get("r_20d", 0.0), float(item.get("r_60d", 0.0) or 0.0), float(item.get("r_20d", 0.0) or 0.0)
-        if "rs_ratio" not in item or item["rs_ratio"] in (100.0, None): item["rs_ratio"] = round(100.0 * (1.0 + s_r60 / 100.0) / max(0.01, (1.0 + bm_r60 / 100.0)), 2)
-        if "rs_momentum" not in item or item["rs_momentum"] in (100.0, None): item["rs_momentum"] = round(100.0 * (1.0 + s_r20 / 100.0) / max(0.01, (1.0 + bm_r20 / 100.0)), 2)
+        bm_r60, bm_r20 = bm_info.get("r_60d", 0.0), bm_info.get("r_20d", 0.0)
+        s_r60, s_r20 = float(item.get("r_60d", 0.0) or 0.0), float(item.get("r_20d", 0.0) or 0.0)
+        if "rs_ratio" not in item or item["rs_ratio"] in (100.0, None):
+            item["rs_ratio"] = round(100.0 * (1.0 + s_r60 / 100.0) / max(0.01, (1.0 + bm_r60 / 100.0)), 2)
+        if "rs_momentum" not in item or item["rs_momentum"] in (100.0, None):
+            item["rs_momentum"] = round(100.0 * (1.0 + s_r20 / 100.0) / max(0.01, (1.0 + bm_r20 / 100.0)), 2)
     return raw_list, status_msg
 
 def fetch_stock_and_momentum(symbol, market, entry_date_str=None):
@@ -460,11 +463,7 @@ with tab_leaderboard:
     st.subheader("🔍 個股查詢")
     
     typed_search = st.text_input("輸入股票代號或名稱查詢（支援單檔或多檔，多檔請用空白、逗號或換行分隔）", placeholder="例如：2330 聯一光 3441 2454", key="typed_search_field")
-    
-    if typed_search.strip():
-        search_query = typed_search.strip()
-    else:
-        search_query = st.session_state.search_input_val
+    search_query = typed_search.strip() or st.session_state.search_input_val
 
     if search_query:
         if not typed_search.strip() and st.session_state.search_input_val:
@@ -489,10 +488,16 @@ with tab_leaderboard:
             for m in matched:
                 score, m_type = m.get("rs_rating", 50), m.get("market", "上市/上櫃")
                 sym, name = clean_sym(m.get("symbol")), clean_stock_name(m.get("name", m.get("symbol")), m.get("symbol"))
+                
+                # 同步數值：若排行榜已存在該標的，直接使用資料庫計算值，確保與排行榜數值一致
                 cur_p, _, _, q_r5, q_r20, q_r60, query_rs_ratio, query_rs_mom = fetch_stock_and_momentum(sym, m_type, get_tw_now_str("%Y-%m-%d"))
-                m_eval = m.copy()
-                m_eval["rs_ratio"] = query_rs_ratio
-                badge_style = get_trend_master_status(m_eval)
+                if "rs_ratio" in m: query_rs_ratio = m["rs_ratio"]
+                if "rs_momentum" in m: query_rs_mom = m["rs_momentum"]
+                if "r_5d" in m: q_r5 = float(m.get("r_5d", 0.0) or 0.0)
+                if "r_20d" in m: q_r20 = float(m.get("r_20d", 0.0) or 0.0)
+                if "r_60d" in m: q_r60 = float(m.get("r_60d", 0.0) or 0.0)
+
+                badge_style = get_trend_master_status(m)
                 detailed_data.append({"name": name, "sym": sym, "m_type": m_type, "score": score, "query_rs_mom": query_rs_mom, "query_rs_ratio": query_rs_ratio, "q_r5": q_r5, "q_r20": q_r20, "q_r60": q_r60, "badge_style": badge_style})
                 compare_rows.append({"股票代號": sym, "股票名稱": name, "市場別": m_type, "目前市價": f"${cur_p:.2f}" if cur_p is not None else "-", "RS 評分": score, "RS 動能 (20MA)": query_rs_mom, "RS_ratio (60MA)": query_rs_ratio, "5日漲跌幅 (%)": f"{q_r5:+0.2f}%", "20日漲跌幅 (%)": f"{q_r20:+0.2f}%", "60日漲跌幅 (%)": f"{q_r60:+0.2f}%", "動能狀態": badge_style})
 
@@ -525,7 +530,18 @@ with tab_leaderboard:
         display_df = filtered_df[["rs_rating", "symbol", "name", "market", "score", "rs_ratio", "rs_momentum", "順勢操作狀態"]].rename(columns={"rs_rating": "RS Rating (PR)", "symbol": "股票代號", "name": "中文名稱", "market": "上市櫃", "score": "綜合動能得分", "rs_ratio": "RS_ratio (60MA)", "rs_momentum": "RS動能比率(20MA)"})
         st.caption(f"共計 **{len(display_df)}** 檔標的符合條件（RS ≥ {min_rs}） ｜ 💡 **提示：勾選表格左側任意個股，上方會自動帶出詳細分析**")
         
-        event = st.dataframe(display_df, use_container_width=True, hide_index=True, height=450, on_select="rerun", selection_mode="single-row", key="rank_df_table")
+        col_cfg = {
+            "RS Rating (PR)": st.column_config.NumberColumn(width="small"),
+            "股票代號": st.column_config.TextColumn(width="small"),
+            "中文名稱": st.column_config.TextColumn(width="medium"),
+            "上市櫃": st.column_config.TextColumn(width="small"),
+            "綜合動能得分": st.column_config.NumberColumn(width="small", format="%.2f"),
+            "RS_ratio (60MA)": st.column_config.NumberColumn(width="small", format="%.2f"),
+            "RS動能比率(20MA)": st.column_config.NumberColumn(width="small", format="%.2f"),
+            "順勢操作狀態": st.column_config.TextColumn(width="large")
+        }
+        
+        event = st.dataframe(display_df, column_config=col_cfg, use_container_width=True, hide_index=True, height=450, on_select="rerun", selection_mode="single-row", key="rank_df_table")
         if event and hasattr(event, "selection") and event.selection.get("rows"):
             sel_idx = event.selection["rows"][0]
             chosen_sym = str(display_df.iloc[sel_idx]["股票代號"])
