@@ -41,6 +41,8 @@ OFFICIAL_STOCK_NAMES = _load_official_names()
 def clean_stock_name(name, symbol=None):
     if symbol:
         sym_str = str(symbol).strip().upper()
+        if sym_str.endswith(".0"):
+            sym_str = sym_str[:-2]
         if sym_str in OFFICIAL_STOCK_NAMES:
             return OFFICIAL_STOCK_NAMES[sym_str]
     
@@ -62,6 +64,15 @@ def clean_stock_name(name, symbol=None):
     
     cleaned = cleaned.strip()
     return cleaned if cleaned else raw
+
+def clean_symbol_str(val):
+    """確保股票代號純淨（去除 .0、前後空白）"""
+    if val is None:
+        return ""
+    s = str(val).strip()
+    if s.endswith(".0"):
+        s = s[:-2]
+    return s
 
 # ==========================================
 # 核心數學模組：時區清洗與大盤基準動能引擎
@@ -247,7 +258,6 @@ def _get_gsheet_conn():
         return None
 
 def load_data():
-    # 優先嘗試從 Google Sheets 讀取
     conn = _get_gsheet_conn()
     if conn:
         try:
@@ -256,7 +266,8 @@ def load_data():
                 records = []
                 for _, row in df.iterrows():
                     r_dict = row.dropna().to_dict()
-                    if not r_dict or "symbol" not in r_dict or not str(r_dict["symbol"]).strip():
+                    sym_clean = clean_symbol_str(r_dict.get("symbol", ""))
+                    if not sym_clean:
                         continue
                     
                     history_val = r_dict.get("history", "[]")
@@ -270,15 +281,35 @@ def load_data():
                     else:
                         history_list = []
 
+                    try:
+                        cost_val = float(r_dict.get("avg_cost", 0.0))
+                    except Exception:
+                        cost_val = 0.0
+
+                    try:
+                        shares_val = int(float(r_dict.get("shares", 0)))
+                    except Exception:
+                        shares_val = 0
+
+                    try:
+                        high_val = float(r_dict.get("record_high", cost_val))
+                    except Exception:
+                        high_val = cost_val
+
+                    try:
+                        pnl_val = float(r_dict.get("realized_pnl", 0))
+                    except Exception:
+                        pnl_val = 0.0
+
                     record = {
-                        "symbol": str(r_dict.get("symbol", "")).strip(),
-                        "name": clean_stock_name(r_dict.get("name"), r_dict.get("symbol")),
-                        "market": str(r_dict.get("market", "TW")),
-                        "entry_date": str(r_dict.get("entry_date", get_tw_now_str("%Y-%m-%d"))),
-                        "avg_cost": float(r_dict.get("avg_cost", 0.0)),
-                        "shares": int(r_dict.get("shares", 0)),
-                        "record_high": float(r_dict.get("record_high", r_dict.get("avg_cost", 0.0))),
-                        "realized_pnl": float(r_dict.get("realized_pnl", 0)),
+                        "symbol": sym_clean,
+                        "name": clean_stock_name(r_dict.get("name"), sym_clean),
+                        "market": str(r_dict.get("market", "TW")).strip().upper(),
+                        "entry_date": str(r_dict.get("entry_date", get_tw_now_str("%Y-%m-%d"))).strip(),
+                        "avg_cost": cost_val,
+                        "shares": shares_val,
+                        "record_high": high_val,
+                        "realized_pnl": pnl_val,
                         "history": history_list
                     }
                     records.append(record)
@@ -286,12 +317,13 @@ def load_data():
         except Exception:
             pass
 
-    # 備援：若未設定 Secrets 則降級使用本地 json
+    # 備援：本地 json
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 for d in data:
+                    d["symbol"] = clean_symbol_str(d.get("symbol", ""))
                     d["name"] = clean_stock_name(d.get("name"), d.get("symbol"))
                 return data
         except Exception:
@@ -299,14 +331,12 @@ def load_data():
     return []
 
 def save_data(data):
-    # 同步寫入本地 json 備份
     try:
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
 
-    # 寫入 Google Sheets
     conn = _get_gsheet_conn()
     if conn:
         try:
@@ -321,7 +351,7 @@ def save_data(data):
             rows = []
             for item in data:
                 rows.append({
-                    "symbol": item.get("symbol", ""),
+                    "symbol": clean_symbol_str(item.get("symbol", "")),
                     "name": item.get("name", ""),
                     "market": item.get("market", "TW"),
                     "entry_date": str(item.get("entry_date", "")),
@@ -380,6 +410,7 @@ def load_market_data():
     bm_dict = get_benchmark_returns()
 
     for item in raw_list:
+        item["symbol"] = clean_symbol_str(item.get("symbol", ""))
         item["name"] = clean_stock_name(item.get("name"), item.get("symbol"))
         mkt_key = "TWO" if "上櫃" in str(item.get("market", "")) or "TWO" in str(item.get("market", "")).upper() else "TW"
         bm_info = bm_dict.get(mkt_key, bm_dict["TW"])
@@ -398,22 +429,23 @@ def load_market_data():
     return raw_list, status_msg
 
 def get_stock_rs_info(symbol, market_list):
-    sym_clean = str(symbol).strip().upper()
+    sym_clean = clean_symbol_str(symbol).upper()
     for item in market_list:
-        if str(item.get("symbol", "")).strip().upper() == sym_clean:
+        if clean_symbol_str(item.get("symbol", "")).upper() == sym_clean:
             return item
     return None
 
 def fetch_stock_and_momentum(symbol, market, entry_date_str=None):
-    is_otc = "TWO" in str(market).upper() or market == "上櫃"
-    ticker = f"{symbol}.TWO" if is_otc else f"{symbol}.TW"
+    sym_clean = clean_symbol_str(symbol)
+    is_otc = "TWO" in str(market).upper() or "上櫃" in str(market)
+    ticker = f"{sym_clean}.TWO" if is_otc else f"{sym_clean}.TW"
     bm_key = "TWO" if is_otc else "TW"
 
     try:
         stock = yf.Ticker(ticker)
         df_all = stock.history(period="1y")
         if df_all.empty:
-            alt_ticker = f"{symbol}.TW" if is_otc else f"{symbol}.TWO"
+            alt_ticker = f"{sym_clean}.TW" if is_otc else f"{sym_clean}.TWO"
             stock = yf.Ticker(alt_ticker)
             df_all = stock.history(period="1y")
             if df_all.empty:
@@ -517,7 +549,7 @@ def compute_market_breadth_data(market_list, mkt_filter="TW"):
     for item in market_list:
         m_type = "TWO" if "上櫃" in str(item.get("market", "")) or "TWO" in str(item.get("market", "")).upper() else "TW"
         if mkt_filter == "ALL" or m_type == mkt_filter:
-            sym = str(item.get("symbol", "")).strip().upper()
+            sym = clean_symbol_str(item.get("symbol", "")).upper()
             if sym:
                 ticker = f"{sym}.TWO" if m_type == "TWO" else f"{sym}.TW"
                 filtered_symbols.append(ticker)
@@ -705,24 +737,25 @@ with tab_portfolio:
                 
             submitted = st.form_submit_button("確認建立持倉", use_container_width=True)
             if submitted and sym:
+                sym_cleaned = clean_symbol_str(sym)
                 mkt_code = "TWO" if "TWO" in mkt else "TW"
-                clean_n = clean_stock_name(name.strip(), sym.strip()) if name else clean_stock_name(sym.strip(), sym.strip())
+                clean_n = clean_stock_name(name.strip(), sym_cleaned) if name else clean_stock_name(sym_cleaned, sym_cleaned)
                 new_item = {
-                    "symbol": sym.strip(),
+                    "symbol": sym_cleaned,
                     "name": clean_n,
                     "market": mkt_code,
                     "entry_date": str(entry_d),
-                    "avg_cost": price,
+                    "avg_cost": float(price),
                     "shares": int(shs),
-                    "record_high": price,
-                    "realized_pnl": 0,
+                    "record_high": float(price),
+                    "realized_pnl": 0.0,
                     "history": [
                         make_log_entry("🌱 初始建倉", price, f"+{int(shs)}", int(shs), "0 元", f"起始成本 ${price}")
                     ]
                 }
                 portfolio.append(new_item)
                 save_data(portfolio)
-                st.success(f"已新增 {new_item['name']} ({sym})")
+                st.success(f"已新增 {new_item['name']} ({sym_cleaned})")
                 st.rerun()
 
     if not portfolio:
@@ -735,14 +768,14 @@ with tab_portfolio:
         st.caption(f"🕒 最新市價更新時間：{st.session_state.last_portfolio_refresh}")
 
         for idx, item in enumerate(portfolio):
-            sym = item["symbol"]
+            sym = clean_symbol_str(item["symbol"])
             name = clean_stock_name(item.get("name", sym), sym)
             mkt = item["market"]
             entry_d = item["entry_date"]
             avg_cost = item["avg_cost"]
             shares = item["shares"]
             stored_high = item.get("record_high", avg_cost)
-            realized_pnl = item.get("realized_pnl", 0)
+            realized_pnl = item.get("realized_pnl", 0.0)
             history_logs = item.get("history", [])
 
             info = get_stock_rs_info(sym, market_rankings)
@@ -862,7 +895,7 @@ with tab_portfolio:
                     st.caption(f"試算本次損益：**{sim_red_pnl:+,} 元** ({sim_red_roi:+}%)")
                     if st.button("確認減碼", key=f"btn_red_{idx}", use_container_width=True):
                         new_shares = shares - int(red_s)
-                        current_realized = item.get("realized_pnl", 0)
+                        current_realized = item.get("realized_pnl", 0.0)
                         new_log = make_log_entry("🔽 分批減碼", red_p, f"-{int(red_s)}", new_shares, f"{sim_red_pnl:+,} 元", f"報酬率 {sim_red_roi:+}%")
                         portfolio[idx].setdefault("history", []).append(new_log)
                         if new_shares > 0:
@@ -893,10 +926,10 @@ with tab_leaderboard:
     search_query = st.text_input("輸入股票代號或名稱查詢（例如：2330、聯一光、3441）", placeholder="請輸入代號或名稱...")
     
     if search_query:
-        query_str = search_query.strip().upper()
+        query_str = clean_symbol_str(search_query).upper()
         matched = [
             item for item in market_rankings 
-            if query_str in str(item.get("symbol", "")).upper() or query_str in str(item.get("name", "")).upper()
+            if query_str in clean_symbol_str(item.get("symbol", "")).upper() or query_str in str(item.get("name", "")).upper()
         ]
         
         if matched:
@@ -905,7 +938,7 @@ with tab_leaderboard:
                 score = m.get("rs_rating", 50)
                 m_type = m.get("market", "上市/上櫃")
                 name = clean_stock_name(m.get("name", m.get("symbol")), m.get("symbol"))
-                sym = m.get("symbol")
+                sym = clean_symbol_str(m.get("symbol"))
                 raw_score = m.get("score", 0.0)
                 
                 _, _, _, q_r5, q_r20, q_r60, query_rs_ratio, query_rs_mom = fetch_stock_and_momentum(sym, m_type, get_tw_now_str("%Y-%m-%d"))
