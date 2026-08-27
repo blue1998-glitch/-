@@ -12,6 +12,8 @@ get_tw_now_str = lambda fmt="%Y-%m-%d %H:%M:%S": get_tw_now().strftime(fmt)
 
 if "last_portfolio_refresh" not in st.session_state:
     st.session_state.last_portfolio_refresh = get_tw_now_str()
+if "search_stock_query" not in st.session_state:
+    st.session_state.search_stock_query = ""
 
 def _load_names():
     try:
@@ -456,7 +458,9 @@ with tab_portfolio:
 
 with tab_leaderboard:
     st.subheader("🔍 個股查詢")
-    search_query = st.text_input("輸入股票代號或名稱查詢（支援單檔或多檔，多檔請用空白、逗號或換行分隔）", placeholder="例如：2330 聯一光 3441 2454")
+    search_query = st.text_input("輸入股票代號或名稱查詢（支援單檔或多檔，多檔請用空白、逗號或換行分隔）", value=st.session_state.search_stock_query, placeholder="例如：2330 聯一光 3441 2454", key="search_stock_input")
+    st.session_state.search_stock_query = search_query
+
     if search_query:
         matched_dict = {}
         for tok in [t.strip() for t in re.split(r"[\s,;，、\n]+", search_query) if t.strip()]:
@@ -511,9 +515,25 @@ with tab_leaderboard:
         filtered_df["name"] = filtered_df.apply(lambda r: clean_stock_name(r.get("name"), r.get("symbol")), axis=1)
         filtered_df = filtered_df.sort_values(by="rs_rating", ascending=False)
         filtered_df["順勢操作狀態"] = filtered_df.apply(get_trend_master_status, axis=1)
-        display_df = filtered_df[["rs_rating", "symbol", "name", "market", "score", "rs_ratio", "rs_momentum", "順勢操作狀態"]].rename(columns={"rs_rating": "RS Rating (PR)", "name": "中文名稱", "market": "上市櫃", "score": "綜合動能得分", "rs_ratio": "RS_ratio (60MA)", "rs_momentum": "RS動能比率(20MA)"})
-        st.caption(f"共計 **{len(display_df)}** 檔標的符合條件（RS ≥ {min_rs}）：")
-        st.dataframe(display_df, use_container_width=True, hide_index=True, height=450)
+        
+        st.caption(f"共計 **{len(filtered_df)}** 檔標的符合條件（RS ≥ {min_rs}），點擊代號或名稱可直接代入個股查詢：")
+        
+        h_cols = st.columns([1, 1.5, 1, 1, 1.2, 1.2, 2.5])
+        headers = ["RS(PR)", "代號 / 名稱", "市場", "得分", "RS (60MA)", "RS (20MA)", "順勢操作狀態"]
+        for col, h in zip(h_cols, headers): col.markdown(f"**{h}**")
+
+        for _, row in filtered_df.iterrows():
+            r_sym, r_name = str(row["symbol"]), str(row["name"])
+            c1, c2, c3, c4, c5, c6, c7 = st.columns([1, 1.5, 1, 1, 1.2, 1.2, 2.5])
+            c1.write(f"**{row.get('rs_rating', 50)}**")
+            if c2.button(f"🔍 {r_sym} {r_name}", key=f"quick_search_{r_sym}", use_container_width=True):
+                st.session_state.search_stock_query = r_sym
+                st.rerun()
+            c3.write(str(row.get("market", "上市")))
+            c4.write(f"{float(row.get('score', 0.0)):.1f}")
+            c5.write(f"{float(row.get('rs_ratio', 100.0)):.2f}")
+            c6.write(f"{float(row.get('rs_momentum', 100.0)):.2f}")
+            c7.write(str(row.get("順勢操作狀態", "")))
     else: st.info("尚無排名資料。")
 
 with tab_market_breadth:
