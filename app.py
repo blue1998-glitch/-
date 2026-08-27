@@ -8,6 +8,7 @@ import os
 import requests
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from streamlit_gsheets import GSheetsConnection
 
 st.set_page_config(layout="wide", initial_sidebar_state="collapsed", page_title="台股動能 RS 與大盤寬度監控")
 
@@ -236,7 +237,56 @@ def get_trend_master_status(row):
     else:
         return f"{prefix}⛔ 弱勢落後・左側不碰 (避開死水)"
 
+# ==========================================
+# 資料儲存模組 (Google Sheets 雲端持久化)
+# ==========================================
+def _get_gsheet_conn():
+    try:
+        return st.connection("gsheets", type=GSheetsConnection)
+    except Exception:
+        return None
+
 def load_data():
+    # 優先嘗試從 Google Sheets 讀取
+    conn = _get_gsheet_conn()
+    if conn:
+        try:
+            df = conn.read(ttl="0")
+            if df is not None and not df.empty:
+                records = []
+                for _, row in df.iterrows():
+                    r_dict = row.dropna().to_dict()
+                    if not r_dict or "symbol" not in r_dict or not str(r_dict["symbol"]).strip():
+                        continue
+                    
+                    history_val = r_dict.get("history", "[]")
+                    if isinstance(history_val, str):
+                        try:
+                            history_list = json.loads(history_val)
+                        except Exception:
+                            history_list = []
+                    elif isinstance(history_val, list):
+                        history_list = history_val
+                    else:
+                        history_list = []
+
+                    record = {
+                        "symbol": str(r_dict.get("symbol", "")).strip(),
+                        "name": clean_stock_name(r_dict.get("name"), r_dict.get("symbol")),
+                        "market": str(r_dict.get("market", "TW")),
+                        "entry_date": str(r_dict.get("entry_date", get_tw_now_str("%Y-%m-%d"))),
+                        "avg_cost": float(r_dict.get("avg_cost", 0.0)),
+                        "shares": int(r_dict.get("shares", 0)),
+                        "record_high": float(r_dict.get("record_high", r_dict.get("avg_cost", 0.0))),
+                        "realized_pnl": float(r_dict.get("realized_pnl", 0)),
+                        "history": history_list
+                    }
+                    records.append(record)
+                return records
+        except Exception:
+            pass
+
+    # 備援：若未設定 Secrets 則降級使用本地 json
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -249,8 +299,42 @@ def load_data():
     return []
 
 def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    # 同步寫入本地 json 備份
+    try:
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+    # 寫入 Google Sheets
+    conn = _get_gsheet_conn()
+    if conn:
+        try:
+            if not data:
+                empty_df = pd.DataFrame(columns=[
+                    "symbol", "name", "market", "entry_date", 
+                    "avg_cost", "shares", "record_high", "realized_pnl", "history"
+                ])
+                conn.update(data=empty_df)
+                return
+            
+            rows = []
+            for item in data:
+                rows.append({
+                    "symbol": item.get("symbol", ""),
+                    "name": item.get("name", ""),
+                    "market": item.get("market", "TW"),
+                    "entry_date": str(item.get("entry_date", "")),
+                    "avg_cost": float(item.get("avg_cost", 0.0)),
+                    "shares": int(item.get("shares", 0)),
+                    "record_high": float(item.get("record_high", 0.0)),
+                    "realized_pnl": float(item.get("realized_pnl", 0)),
+                    "history": json.dumps(item.get("history", []), ensure_ascii=False)
+                })
+            df_to_save = pd.DataFrame(rows)
+            conn.update(data=df_to_save)
+        except Exception as e:
+            st.error(f"Google Sheets 寫入失敗: {e}")
 
 def make_log_entry(action, price, share_delta, remaining_shares, pnl_text, note):
     return {
