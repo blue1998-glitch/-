@@ -922,7 +922,7 @@ with tab_portfolio:
 # 分頁 2：全市場 RS 排行榜與個股查詢
 # ==========================================
 with tab_leaderboard:
-    st.subheader("🔍 萬用個股 RS & RS_ratio（60MA/20MA）評分查詢")
+    st.subheader("🔍 個股查詢")
     search_query = st.text_input("輸入股票代號或名稱查詢（例如：2330、聯一光、3441）", placeholder="請輸入代號或名稱...")
     
     if search_query:
@@ -970,7 +970,7 @@ with tab_leaderboard:
         else:
             st.error(f"查無符合「{search_query}」的標的，請確認代號或名稱是否正確。")
 
-    st.subheader("🏆 全市場 RS ≥ 75 領袖股強勢排行榜")
+    st.subheader("🏆 強勢股排行榜")
     
     df_raw = pd.DataFrame(market_rankings)
     if not df_raw.empty:
@@ -985,7 +985,7 @@ with tab_leaderboard:
 
         f1, f2 = st.columns(2)
         with f1:
-            min_rs = st.number_input("最低 RS 門檻篩選", min_value=1, max_value=99, value=75, step=1)
+            min_rs = st.number_input("最低 RS 門檻篩選", min_value=1, max_value=99, value=85, step=1)
         with f2:
             market_filter = st.multiselect("市場別篩選", ["上市", "上櫃"], default=["上市", "上櫃"])
 
@@ -1019,10 +1019,10 @@ with tab_leaderboard:
         st.info("尚無排名資料，請先確認 market_rankings.json 檔案是否存在。")
 
 # ==========================================
-# 分頁 3：全市場大盤寬度指標
+# 分頁 3：大盤指標
 # ==========================================
 with tab_market_breadth:
-    st.subheader("📊 全市場大盤健康度與市場寬度指標")
+    st.subheader("📊 大盤指標")
 
     b_col1, b_col2 = st.columns(2)
     with b_col1:
@@ -1079,8 +1079,8 @@ with tab_market_breadth:
         fig1.update_layout(chart_layout, yaxis=dict(title="比例 (%)", range=[0, 100], fixedrange=True), xaxis=dict(fixedrange=True))
         st.plotly_chart(fig1, use_container_width=True, config=mobile_chart_config)
 
-        # 2 & 3. 創新高 / 創新低指標與新高新低差
-        st.markdown("#### 2 & 3. 52週 (240日) 創新高/新低指標與淨差")
+        # 2. 創新高 / 創新低指標與新高新低差
+        st.markdown("#### 2. 52週創新高/新低指標與淨差")
         fig2 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08, subplot_titles=("創新高 / 創新低比例 (%) 與家數", "新高新低差 (Net New Highs/Lows)"))
         fig2.add_trace(go.Scatter(x=plot_df.index, y=plot_df["new_high_ratio"], mode="lines", name="創新高比例 (%)", line=dict(color="#E91E63", width=2)), row=1, col=1)
         fig2.add_trace(go.Scatter(x=plot_df.index, y=plot_df["new_low_ratio"], mode="lines", name="創新低比例 (%)", line=dict(color="#00BCD4", width=2)), row=1, col=1)
@@ -1093,7 +1093,7 @@ with tab_market_breadth:
         fig2.update_yaxes(fixedrange=True)
         st.plotly_chart(fig2, use_container_width=True, config=mobile_chart_config)
 
-        # 4. 進化版騰落指標體系 (大盤背離 / 滾動AD比率 / 麥克連震盪指標)
+        # 3. 進化版騰落指標體系 (大盤背離 / 滾動AD比率 / 麥克連震盪指標)
         st.markdown("#### 4. 進化版騰落指標 (大盤收盤與背離警示 ｜ 滾動 AD 比率 ｜ McClellan 震盪指標)")
         fig3 = make_subplots(
             rows=3, cols=1,
@@ -1147,7 +1147,7 @@ with tab_market_breadth:
         fig3.update_yaxes(title_text="震盪數值", row=3, col=1, fixedrange=True)
         st.plotly_chart(fig3, use_container_width=True, config=mobile_chart_config)
 
-        # 5. 均線多頭排列比例
+        # 4. 均線多頭排列比例
         st.markdown("#### 5. 均線多頭排列比例 (%)")
         fig4 = go.Figure()
         fig4.add_trace(go.Scatter(x=plot_df.index, y=plot_df["short_bull_ratio"], mode="lines", name="短均多頭排列 (收盤>20MA>60MA)", line=dict(color="#9C27B0", width=2)))
@@ -1156,7 +1156,7 @@ with tab_market_breadth:
         fig4.update_layout(chart_layout, yaxis=dict(title="多頭排列比例 (%)", range=[0, 100], fixedrange=True), xaxis=dict(fixedrange=True))
         st.plotly_chart(fig4, use_container_width=True, config=mobile_chart_config)
 
-        # 6. 大盤現價與 60日 MA 距離 (%)
+        # 5. 大盤現價與 60日 MA 距離 (%)
         st.markdown(f"#### 6. 大盤現價與 60日 MA 距離 (%) ｜ 今日最新數值：**{latest['dist_60ma_pct']:+.2f}%**")
         fig5 = go.Figure()
         dist_bar_colors = ["#F44336" if v >= 0 else "#4CAF50" for v in plot_df["dist_60ma_pct"]]
