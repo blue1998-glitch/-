@@ -5,6 +5,7 @@ import numpy as np
 from datetime import datetime, timezone, timedelta
 import json
 import os
+import re
 import requests
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -923,48 +924,115 @@ with tab_portfolio:
 # ==========================================
 with tab_leaderboard:
     st.subheader("🔍 個股查詢")
-    search_query = st.text_input("輸入股票代號或名稱查詢（例如：2330、聯一光、3441）", placeholder="請輸入代號或名稱...")
+    search_query = st.text_input(
+        "輸入股票代號或名稱查詢（支援單檔或多檔，多檔請用空白、逗號或換行分隔）", 
+        placeholder="例如：2330 聯一光 3441 2454"
+    )
     
     if search_query:
-        query_str = clean_symbol_str(search_query).upper()
-        matched = [
-            item for item in market_rankings 
-            if query_str in clean_symbol_str(item.get("symbol", "")).upper() or query_str in str(item.get("name", "")).upper()
-        ]
+        # 分割多個關鍵字（支援空白、逗號、分號、頓號、換行）
+        raw_tokens = [tok.strip() for tok in re.split(r"[\s,;，、\n]+", search_query) if tok.strip()]
+        matched_dict = {}
+
+        for tok in raw_tokens:
+            q_token = clean_symbol_str(tok).upper()
+            found = False
+            for item in market_rankings:
+                sym_item = clean_symbol_str(item.get("symbol", "")).upper()
+                name_item = str(item.get("name", "")).upper()
+                if q_token == sym_item or q_token == name_item or q_token in sym_item or q_token in name_item:
+                    matched_dict[sym_item] = item
+                    found = True
+            
+            # 若排行榜中無記錄，則嘗試直接構造 yfinance 代碼查詢
+            if not found and (q_token.isdigit() or len(q_token) >= 2):
+                std_n = clean_stock_name(q_token, q_token)
+                matched_dict[q_token] = {
+                    "symbol": q_token,
+                    "name": std_n if std_n != q_token else q_token,
+                    "market": "TW",
+                    "rs_rating": 50,
+                    "score": 0.0
+                }
+
+        matched = list(matched_dict.values())
         
         if matched:
             st.write(f"找到 **{len(matched)}** 筆符合標的：")
+            
+            compare_rows = []
+            detailed_data = []
+
             for m in matched:
                 score = m.get("rs_rating", 50)
                 m_type = m.get("market", "上市/上櫃")
                 name = clean_stock_name(m.get("name", m.get("symbol")), m.get("symbol"))
                 sym = clean_symbol_str(m.get("symbol"))
-                raw_score = m.get("score", 0.0)
                 
-                _, _, _, q_r5, q_r20, q_r60, query_rs_ratio, query_rs_mom = fetch_stock_and_momentum(sym, m_type, get_tw_now_str("%Y-%m-%d"))
+                cur_p, _, _, q_r5, q_r20, q_r60, query_rs_ratio, query_rs_mom = fetch_stock_and_momentum(
+                    sym, m_type, get_tw_now_str("%Y-%m-%d")
+                )
+                
                 m_eval = m.copy()
                 m_eval["rs_ratio"] = query_rs_ratio
                 badge_style = get_trend_master_status(m_eval)
 
-                # 個股查詢結果卡片排列
+                # 儲存詳細資訊供下方卡片展示
+                detailed_data.append({
+                    "name": name,
+                    "sym": sym,
+                    "m_type": m_type,
+                    "score": score,
+                    "query_rs_mom": query_rs_mom,
+                    "query_rs_ratio": query_rs_ratio,
+                    "q_r5": q_r5,
+                    "q_r20": q_r20,
+                    "q_r60": q_r60,
+                    "badge_style": badge_style
+                })
+
+                # 儲存比較表格數據（依指定欄位順序排列）
+                compare_rows.append({
+                    "股票代號": sym,
+                    "股票名稱": name,
+                    "市場別": m_type,
+                    "目前市價": f"${cur_p:.2f}" if cur_p is not None else "-",
+                    "RS 評分": score,
+                    "RS 動能 (20MA)": query_rs_mom,
+                    "RS_ratio (60MA)": query_rs_ratio,
+                    "5日漲跌幅 (%)": f"{q_r5:+0.2f}%",
+                    "20日漲跌幅 (%)": f"{q_r20:+0.2f}%",
+                    "60日漲跌幅 (%)": f"{q_r60:+0.2f}%",
+                    "動能狀態": badge_style
+                })
+
+            # 顯示比較數值表格
+            st.markdown("#### 📊 查詢標的數值比較表")
+            compare_df = pd.DataFrame(compare_rows)
+            st.dataframe(compare_df, use_container_width=True, hide_index=True)
+            st.divider()
+
+            # 顯示詳細指標卡片
+            st.markdown("#### 📌 查詢標的詳細指標")
+            for d in detailed_data:
                 r_col0 = st.columns(1)[0]
-                r_col0.metric("標的與市場", f"{name} ({sym})", f"{m_type} ｜ {badge_style}")
+                r_col0.metric("標的與市場", f"{d['name']} ({d['sym']})", f"{d['m_type']} ｜ {d['badge_style']}")
 
                 r_col1, r_col2 = st.columns(2)
-                r_col1.metric("RS Rating 評分", f"{score} 分")
+                r_col1.metric("RS Rating 評分", f"{d['score']} 分")
                 r_col2.metric(
                     "RS動能比率(20MA)", 
-                    f"{query_rs_mom}", 
-                    "🔥 短期動能增強" if query_rs_mom >= 100 else "❄️ 短期動能減弱"
+                    f"{d['query_rs_mom']}", 
+                    "🔥 短期動能增強" if d['query_rs_mom'] >= 100 else "❄️ 短期動能減弱"
                 )
 
                 r_col3, r_col4 = st.columns(2)
-                r_col3.metric("RS_ratio (60MA)", f"{query_rs_ratio}", f"{'🔥 大盤領先者' if query_rs_ratio>=100 else '❄️ 大盤落後者'}")
-                r_col4.metric("近 5 日動能", f"{q_r5:+}%")
+                r_col3.metric("RS_ratio (60MA)", f"{d['query_rs_ratio']}", f"{'🔥 大盤領先者' if d['query_rs_ratio']>=100 else '❄️ 大盤落後者'}")
+                r_col4.metric("近 5 日動能", f"{d['q_r5']:+}%")
 
                 r_col5, r_col6 = st.columns(2)
-                r_col5.metric("近 20 日動能", f"{q_r20:+}%")
-                r_col6.metric("近 60 日動能", f"{q_r60:+}%")
+                r_col5.metric("近 20 日動能", f"{d['q_r20']:+}%")
+                r_col6.metric("近 60 日動能", f"{d['q_r60']:+}%")
 
                 st.divider()
         else:
@@ -1000,7 +1068,7 @@ with tab_leaderboard:
 
         display_df = filtered_df[["rs_rating", "symbol", "name", "market", "score", "rs_ratio", "rs_momentum", "順勢操作狀態"]].rename(columns={
             "rs_rating": "RS Rating (PR)",
-            "symbol": "股票代碼",
+            "股票代碼": "股票代碼",
             "name": "中文名稱",
             "market": "上市櫃",
             "score": "綜合動能得分",
