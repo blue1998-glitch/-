@@ -3,6 +3,7 @@ from datetime import datetime, timezone, timedelta
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from streamlit_gsheets import GSheetsConnection
+from google import genai
 
 st.set_page_config(layout="wide", initial_sidebar_state="collapsed", page_title="台股動能 RS 與大盤寬度監控")
 
@@ -10,7 +11,7 @@ DATA_FILE, TW_TZ = "portfolio.json", timezone(timedelta(hours=8))
 get_tw_now = lambda: datetime.now(TW_TZ)
 get_tw_now_str = lambda fmt="%Y-%m-%d %H:%M:%S": get_tw_now().strftime(fmt)
 
-for k, v in [("last_portfolio_refresh", get_tw_now_str()), ("search_input_val", "")]:
+for k, v in [("last_portfolio_refresh", get_tw_now_str()), ("search_input_val", ""), ("chat_history", [])]:
     st.session_state.setdefault(k, v)
 
 def _load_names():
@@ -86,10 +87,8 @@ def calculate_rs_ratio_series(target_df, benchmark_df, rs_w=60, mom_w=20):
     except Exception: return pd.DataFrame()
 
 def get_trend_master_status(row):
-    rs = float(row.get("rs_rating", 50) or 50)
-    badge = str(row.get("pattern_badge", "") or "")
-    r_5d = float(row.get("r_5d", 0.0) or 0.0)
-    rs_ratio = float(row.get("rs_ratio", 100.0) or 100.0)
+    rs, badge = float(row.get("rs_rating", 50) or 50), str(row.get("pattern_badge", "") or "")
+    r_5d, rs_ratio = float(row.get("r_5d", 0.0) or 0.0), float(row.get("rs_ratio", 100.0) or 100.0)
     p = "🔥[強勢] " if rs_ratio >= 100.0 else "❄️[弱勢] "
     if rs >= 95: sub = "👑 頂級領袖・突破新高 (主力首選)" if "新高" in badge or r_5d >= 10.0 else ("🎯 頂級VCP・即將噴出 (極限強勢)" if "VCP" in badge else "🚀 極致飆股・主升奔馳 (最強5%)")
     elif rs >= 90: sub = "🎯 VCP蓄勢・突破在即 (黃金買點)" if "VCP" in badge else ("⭐ 領袖新高・順風追擊 (多頭先鋒)" if "新高" in badge else "🚀 狂暴主升・沿線抱牢 (第一梯隊)")
@@ -304,7 +303,9 @@ with st.expander("🛡️ 說明", expanded=False):
 if market_rankings: st.info(f"🟢 **全市場 RS 資料庫已就緒** ｜ 收錄 **{len(market_rankings)}** 檔台股 ｜ 狀態：{db_status}")
 else: st.warning("🟡 正在等待全市場 RS 排名資料載入...")
 
-tab_portfolio, tab_leaderboard, tab_market_breadth = st.tabs(["📈 獲利監控系統", "🏆 個股查詢", "📊 大盤"])
+tab_portfolio, tab_leaderboard, tab_market_breadth, tab_ai = st.tabs(["📈 獲利監控系統", "🏆 個股查詢", "📊 大盤", "🤖 Gemini 智能助理"])
+
+portfolio_live_summary = []
 
 with tab_portfolio:
     with st.expander("⚙️ 參數設定", expanded=False):
@@ -391,6 +392,12 @@ with tab_portfolio:
                 status_text, status_color = f"🟠 月線正乖離達 {bias_20}%（過熱）！建議減碼", "orange"
             elif days_held >= time_stop_days and abs(roi) <= 2.0:
                 status_text, status_color = f"⏳ 觸發時間停損（持股已 {days_held} 天，動能停滯）！建議換股", "orange"
+
+            portfolio_live_summary.append({
+                "股票": f"{name} ({sym})", "持股數": shares, "成本價": avg_cost, "現價": cur_price,
+                "未實現損益": net_pnl, "報酬率%": roi, "RS評分": rs_score, "RS_ratio": rs_ratio_val,
+                "狀態": status_text, "持有天數": days_held
+            })
 
             with st.container():
                 st.divider()
@@ -529,7 +536,6 @@ with tab_leaderboard:
         display_df = filtered_df[["rs_rating", "symbol", "name", "market", "score", "rs_ratio", "rs_momentum", "順勢操作狀態"]].rename(columns={"rs_rating": "RS Rating (PR)", "symbol": "股票代號", "name": "中文名稱", "market": "上市櫃", "score": "綜合動能得分", "rs_ratio": "RS_ratio (60MA)", "rs_momentum": "RS動能比率(20MA)"})
         st.caption(f"共計 **{len(display_df)}** 檔標的符合條件（RS ≥ {min_rs}） ｜ 💡 **提示：勾選表格左側任意個股，上方會自動帶出詳細分析**")
         
-        # 使用精確固定像素寬度，徹底消除橫向滑動時的欄位重疊與錯位
         col_cfg = {
             "RS Rating (PR)": st.column_config.NumberColumn(width=110),
             "股票代號": st.column_config.TextColumn(width=90),
@@ -550,6 +556,8 @@ with tab_leaderboard:
                 st.rerun()
     else: st.info("尚無排名資料。")
 
+latest_breadth_dict = {}
+
 with tab_market_breadth:
     st.subheader("📊 大盤指標")
     b_col1, b_col2 = st.columns(2)
@@ -564,6 +572,8 @@ with tab_market_breadth:
     else:
         plot_df = breadth_df.tail(show_days)
         latest, prev = plot_df.iloc[-1], plot_df.iloc[-2] if len(plot_df) >= 2 else plot_df.iloc[-1]
+        latest_breadth_dict = latest.to_dict()
+
         st.markdown("##### 📌 當日即時總覽")
         k1, k2, k3, k4, k5 = st.columns(5)
         k1.metric("站上 20MA 比例", f"{latest['above_20ma']:.1f}%", f"{latest['above_20ma'] - prev['above_20ma']:+.1f}%")
@@ -630,3 +640,58 @@ with tab_market_breadth:
         fig5.add_hline(y=-10, line_dash="dash", line_color="#00BCD4", annotation_text="-10% 負向超跌區", annotation_position="bottom right")
         fig5.update_layout(layout, yaxis=dict(title="距離 (%)", fixedrange=True), xaxis=dict(fixedrange=True))
         st.plotly_chart(fig5, use_container_width=True, config=cfg)
+
+with tab_ai:
+    st.subheader("🤖 Gemini 順勢交易智能助理")
+    st.caption("具備全域數據感知：能直接分析持股風控狀態、全市場排行榜及大盤寬度指標。")
+
+    top_leaders = sorted(market_rankings, key=lambda x: x.get("rs_rating", 0), reverse=True)[:15] if market_rankings else []
+    leaders_summary = [{"代號": x.get("symbol"), "名稱": x.get("name"), "RS評分": x.get("rs_rating"), "RS_ratio": x.get("rs_ratio"), "RS_mom": x.get("rs_momentum")} for x in top_leaders]
+
+    system_context = f"""
+    你是一位專精於台股動能順勢交易（Trend Following / CANSLIM / 領導股操作）的頂級操盤手顧問。
+    你目前整合在用戶的即時監控儀表板中，以下是即時的系統記憶體數據：
+
+    【用戶目前持股與損益風控狀態】
+    {json.dumps(portfolio_live_summary, ensure_ascii=False, indent=2) if portfolio_live_summary else "目前無持倉"}
+
+    【最新大盤寬度與市場健康度指標】
+    {json.dumps(latest_breadth_dict, ensure_ascii=False, indent=2) if latest_breadth_dict else "大盤寬度未載入"}
+
+    【全市場 RS 評分前 15 大強勢領導股】
+    {json.dumps(leaders_summary, ensure_ascii=False, indent=2) if leaders_summary else "排行榜未載入"}
+
+    請根據上述數據與嚴謹的右側順勢交易邏輯（關注 RS 強度、回檔風控、停損守紀律、汰弱留強），為用戶提供具體、冷靜且有條理的分析建議。
+    """
+
+    for msg in st.session_state.chat_history:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    if user_prompt := st.chat_input("請輸入你的問題（例如：幫我診斷目前持股風控、現在大盤適合追突破嗎？）"):
+        st.session_state.chat_history.append({"role": "user", "content": user_prompt})
+        with st.chat_message("user"):
+            st.markdown(user_prompt)
+
+        api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
+        if not api_key:
+            err_msg = "⚠️ 請在 `.streamlit/secrets.toml` 中設定 `GEMINI_API_KEY`。"
+            with st.chat_message("assistant"):
+                st.error(err_msg)
+            st.session_state.chat_history.append({"role": "assistant", "content": err_msg})
+        else:
+            try:
+                client = genai.Client(api_key=api_key)
+                with st.chat_message("assistant"):
+                    with st.spinner("思考中..."):
+                        response = client.models.generate_content(
+                            model="gemini-2.5-flash",
+                            contents=user_prompt,
+                            config={"system_instruction": system_context}
+                        )
+                        reply = response.text
+                        st.markdown(reply)
+                st.session_state.chat_history.append({"role": "assistant", "content": reply})
+            except Exception as e:
+                with st.chat_message("assistant"):
+                    st.error(f"Gemini API 呼叫失敗: {e}")
