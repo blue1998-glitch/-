@@ -3,4 +3,4 @@ yfinance
 pandas
 plotly
 st-gsheets-connection
-pip install google-genai
+google-genai
