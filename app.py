@@ -674,8 +674,10 @@ with tab_ai:
             st.markdown(user_prompt)
 
         api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
+        target_model = st.secrets.get("GEMINI_MODEL", "gemini-3.6-flash")
+        
         if not api_key:
-            err_msg = "⚠️ 請在 `.streamlit/secrets.toml` 中設定 `GEMINI_API_KEY`。"
+            err_msg = "⚠️ 請在 secrets 中設定 `GEMINI_API_KEY`。"
             with st.chat_message("assistant"):
                 st.error(err_msg)
             st.session_state.chat_history.append({"role": "assistant", "content": err_msg})
@@ -685,7 +687,7 @@ with tab_ai:
                 with st.chat_message("assistant"):
                     with st.spinner("思考中..."):
                         response = client.models.generate_content(
-                            model="gemini-2.5-flash",
+                            model=target_model,
                             contents=user_prompt,
                             config={"system_instruction": system_context}
                         )
