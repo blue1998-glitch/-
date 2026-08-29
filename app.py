@@ -5,8 +5,8 @@ from plotly.subplots import make_subplots
 from streamlit_gsheets import GSheetsConnection
 from google import genai
 
+# 基本頁面配置與時區工具
 st.set_page_config(layout="wide", initial_sidebar_state="collapsed", page_title="台股動能 RS 與大盤寬度監控")
-
 DATA_FILE, TW_TZ = "portfolio.json", timezone(timedelta(hours=8))
 get_tw_now = lambda: datetime.now(TW_TZ)
 get_tw_now_str = lambda fmt="%Y-%m-%d %H:%M:%S": get_tw_now().strftime(fmt)
@@ -22,7 +22,7 @@ def _load_names():
     return {}
 
 OFFICIAL_STOCK_NAMES = _load_names()
-clean_sym = lambda val: str(val or "").strip()[:-2] if str(val or "").strip().endswith(".0") else str(val or "").strip()
+clean_sym = lambda v: str(v or "").strip()[:-2] if str(v or "").strip().endswith(".0") else str(v or "").strip()
 
 def clean_stock_name(name, symbol=None):
     sym = clean_sym(symbol).upper()
@@ -42,7 +42,7 @@ def _clean_date_series(df):
         if col in d.columns:
             try: d["Date"] = pd.to_datetime(pd.to_datetime(d[col], utc=True).dt.tz_convert("Asia/Taipei").dt.strftime("%Y-%m-%d"))
             except Exception: d["Date"] = pd.to_datetime(pd.to_datetime(d[col]).dt.strftime("%Y-%m-%d"))
-            if col != "Date": d = d.drop(columns=[col])
+            if col != "Date": d.drop(columns=[col], inplace=True)
             break
     return d
 
@@ -106,7 +106,7 @@ def load_data():
     conn = _get_gsheet_conn()
     if conn:
         try:
-            df = conn.read(ttl="0")
+            df = conn.read(ttl=0)
             if df is not None and not df.empty:
                 records = []
                 for _, r in df.iterrows():
@@ -125,8 +125,9 @@ def load_data():
                         "status_override": str(d.get("status_override", "")),
                         "history": json.loads(hist) if isinstance(hist, str) else (hist if isinstance(hist, list) else [])
                     })
-                return records
-        except Exception: pass
+                if records: return records
+        except Exception as e:
+            st.sidebar.warning(f"Google Sheets 載入異常（切換至備用檔）: {e}")
 
     if os.path.exists(DATA_FILE):
         try:
@@ -304,7 +305,6 @@ if market_rankings: st.info(f"🟢 **全市場 RS 資料庫已就緒** ｜ 收�
 else: st.warning("🟡 正在等待全市場 RS 排名資料載入...")
 
 tab_portfolio, tab_leaderboard, tab_market_breadth, tab_ai = st.tabs(["📈 獲利監控系統", "🏆 個股查詢", "📊 大盤", "🤖 Gemini 智能助理"])
-
 portfolio_live_summary = []
 
 with tab_portfolio:
@@ -674,7 +674,7 @@ with tab_ai:
             st.markdown(user_prompt)
 
         api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
-        target_model = st.secrets.get("GEMINI_MODEL", "gemini-3.6-flash")
+        target_model = st.secrets.get("GEMINI_MODEL", "gemini-2.5-flash")
         
         if not api_key:
             err_msg = "⚠️ 請在 secrets 中設定 `GEMINI_API_KEY`。"
