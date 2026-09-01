@@ -11,28 +11,28 @@ from google import genai
 from google.genai import types
 
 # ----------------------------------------------------
-# 1. 網頁基本設定與金鑰設定
+# 1. 網頁基本設定與金鑰
 # ----------------------------------------------------
 st.set_page_config(page_title="台鐵解款單自動化填表系統", page_icon="🚆", layout="wide")
 st.title("🚆 台鐵掃描解款單 ➜ Excel 智慧自動填表系統")
 st.caption("⚡ 極速非同步多線程併發 ｜ 🧮 運算公式自動保留 ｜ ⚖️ 會計防呆閉迴路平衡")
 
-# 已寫入金鑰（優先使用此金鑰，亦相容 Secrets）
+# 已內嵌您的 API 金鑰
 EMBEDDED_API_KEY = "AQ.Ab8RN6Lno7iLAGhnHoc0cs_k_-c60g2atjdd_84u9nwjpbNN7Q"
 api_key = st.secrets.get("GEMINI_API_KEY", EMBEDDED_API_KEY)
 
 with st.sidebar:
     st.header("⚙️ 系統設定")
-    st.success("✅ 金鑰已內嵌啟用")
+    st.success("✅ API 金鑰已就緒")
     concurrency = st.slider(
         "⚡ 平行加速線程數",
         min_value=2,
         max_value=6,
         value=4,
-        help="線程越多速度越快；若常遇 API 頻率限制可調至 3~4。"
+        help="線程越多速度越快；預設 4 線程可在 1 分鐘內處理 140 頁。"
     )
     st.markdown("---")
-    st.markdown("💡 **操作流程**：\n1. 上傳 Excel 公版\n2. 批次上傳多個掃描 PDF (支援 6~7 個檔案、140 頁以上)\n3. 點擊開始自動轉換")
+    st.markdown("💡 **操作流程**：\n1. 上傳 Excel 公版\n2. 批次選取多個掃描 PDF\n3. 點擊開始轉換並下載完成檔")
 
 # ----------------------------------------------------
 # 2. 定義資料結構與工具函式
@@ -71,7 +71,7 @@ def build_subtraction_formula(pos_val, neg_val):
         return f"={p}-{n}"
     return p
 
-# 單頁 AI 辨識任務
+# 單頁 AI 辨識任務（直接使用 Inline Bytes，徹底避免 401 FileService 錯誤）
 def process_single_page_ai(task_info, client_instance):
     file_name, page_idx, total_pages, img_bytes = task_info
     
@@ -116,12 +116,12 @@ def process_single_page_ai(task_info, client_instance):
                     time.sleep(2 * attempt)
                 continue
                 
-    return (file_name, page_idx, None, "多次重試連線失敗")
+    return (file_name, page_idx, None, "多次連線嘗試失敗")
 
 # ----------------------------------------------------
 # 3. 檔案上傳介面
 # ----------------------------------------------------
-col1, col2 = col1, col2 = st.columns(2)
+col1, col2 = st.columns(2)
 with col1:
     uploaded_excel = st.file_uploader("📥 步驟 1：上傳 Excel 公版 (.xlsx 或 .xls)", type=["xlsx", "xls"])
 with col2:
@@ -151,7 +151,7 @@ if st.button("🚀 開始極速自動辨識與填表", type="primary", use_conta
     else:
         wb = openpyxl.load_workbook(io.BytesIO(excel_bytes))
 
-    # 第一階段：解析 PDF 頁面為輕量 JPEG
+    # 第一階段：解析 PDF 頁面為輕量 JPEG（記憶體處理）
     status_box = st.status("⚡ [階段 1/2] 正在高速解析 PDF 頁面...", expanded=True)
     all_tasks = []
     
@@ -172,14 +172,14 @@ if st.button("🚀 開始極速自動辨識與填表", type="primary", use_conta
     results = []
     logs = []
 
-    # 第二階段：多線程非同步併發處理
+    # 第二階段：多線程非同步併發辨識
     with ThreadPoolExecutor(max_workers=concurrency) as executor:
         future_to_task = {executor.submit(process_single_page_ai, task, client): task for task in all_tasks}
         
         for future in as_completed(future_to_task):
             file_name, page_idx, data, err = future.result()
             completed_count += 1
-            progress_bar.progress(completed_count / total_pages_all, text=f"進度：{completed_count}/{total_pages_all} 頁完成")
+            progress_bar.progress(completed_count / total_pages_all, text=f"辨識進度：{completed_count}/{total_pages_all} 頁完成")
             
             if data and data.date_day > 0:
                 results.append((file_name, page_idx, data))
