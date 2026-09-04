@@ -247,37 +247,62 @@ def compute_market_breadth_data(market_list, mkt_filter="TW"):
 
     closes, highs, lows = (data[k].to_frame() if isinstance(data[k], pd.Series) else data[k] for k in ["Close", "High", "Low"])
     closes, highs, lows = closes.dropna(how="all").ffill(), highs.dropna(how="all").ffill(), lows.dropna(how="all").ffill()
+    volumes = (data["Volume"].to_frame() if isinstance(data["Volume"], pd.Series) else data["Volume"]).dropna(how="all").fillna(0)
     if len(closes) < 30: return None
 
+    base_dates = closes.index.strftime("%Y-%m-%d").tolist()
+    bm_closes = bm_clean["Close"].reindex(pd.to_datetime(base_dates)).ffill().bfill().values if not bm_clean.empty and "Close" in bm_clean.columns else np.linspace(20000, 23000, len(base_dates))
+    bm_vols = bm_clean["Volume"].reindex(pd.to_datetime(base_dates)).ffill().fillna(0).values if not bm_clean.empty and "Volume" in bm_clean.columns else np.zeros(len(base_dates))
+
+    # 1. 均線廣度 (MAB20, MAB60, MAB240)
     ma20, ma60, ma120, ma240 = [closes.rolling(w, min_periods=min(5, w//4)).mean() for w in [20, 60, 120, 240]]
     total_valid = closes.notna().sum(axis=1).replace(0, np.nan)
     calc_ratio = lambda c: (c.sum(axis=1) / total_valid * 100).round(2)
     above_20, above_60, above_240 = calc_ratio(closes > ma20), calc_ratio(closes > ma60), calc_ratio(closes > ma240)
-    nh_c, nl_c = (highs >= (highs.rolling(240, min_periods=30).max() - 1e-4)).sum(axis=1), (lows <= (lows.rolling(240, min_periods=30).min() + 1e-4)).sum(axis=1)
-    diff = closes.diff()
 
-    base_dates = closes.index.strftime("%Y-%m-%d").tolist()
-    bm_closes = bm_clean["Close"].reindex(pd.to_datetime(base_dates)).ffill().bfill().values if not bm_clean.empty and "Close" in bm_clean.columns else np.linspace(20000, 23000, len(base_dates))
+    # 2. 60 日淨創新高指數 (NNH60)
+    h60, l60 = highs.rolling(60, min_periods=20).max(), lows.rolling(60, min_periods=20).min()
+    nh_60 = (highs >= (h60 - 1e-4)).sum(axis=1)
+    nl_60 = (lows <= (l60 + 1e-4)).sum(axis=1)
+    nnh_60 = (nh_60 - nl_60).values
+
+    # 3. 20 日突破延續度 (BFTR20)
+    prev_h20 = highs.shift(1).rolling(20, min_periods=10).max()
+    vol_ma20 = volumes.shift(1).rolling(20, min_periods=5).mean()
+    is_breakout = (closes > prev_h20) & ((volumes >= 1.3 * vol_ma20) | (vol_ma20 == 0))
+    b_count = is_breakout.shift(2).sum(axis=1)
+    s_count = ((closes > prev_h20.shift(2)) & is_breakout.shift(2)).sum(axis=1)
+    b_20 = b_count.rolling(20, min_periods=1).sum()
+    s_20 = s_count.rolling(20, min_periods=1).sum()
+    bftr_20 = np.where(b_20 > 0, (s_20 / b_20) * 100.0, 50.0).round(1)
+
+    # 4. 20 日出貨日計數 (DDC20)
+    bm_s_close = pd.Series(bm_closes)
+    bm_s_vol = pd.Series(bm_vols)
+    is_dist = (bm_s_close.pct_change() <= -0.002) & (bm_s_vol > bm_s_vol.shift(1))
+    ddc_20 = is_dist.rolling(20, min_periods=1).sum().fillna(0).astype(int).values
+
+    # 5. 麥克連震盪指標 (已徹底移除滾動騰落比率)
+    diff = closes.diff()
     adv, dec = (diff > 0).sum(axis=1).values, (diff < 0).sum(axis=1).values
-    
-    r_adv, r_dec = pd.Series(adv).rolling(20, min_periods=5).sum(), pd.Series(dec).rolling(20, min_periods=5).sum()
-    roll_ad = np.where(r_adv + r_dec > 0, (r_adv / (r_adv + r_dec)) * 100.0, 50.0).round(2)
     net_adv = pd.Series(adv - dec)
     mcclellan = (net_adv.ewm(span=19, adjust=False).mean() - net_adv.ewm(span=39, adjust=False).mean()).round(2).values
 
-    df_adv = pd.DataFrame({"close": bm_closes, "rolling_ad_ratio": roll_ad, "mcclellan_osc": mcclellan})
+    df_adv = pd.DataFrame({"close": bm_closes, "mcclellan_osc": mcclellan})
     r_hc, r_lc = df_adv["close"].rolling(20, min_periods=5).max(), df_adv["close"].rolling(20, min_periods=5).min()
-    r_ha, r_hm = df_adv["rolling_ad_ratio"].rolling(20, min_periods=5).max(), df_adv["mcclellan_osc"].rolling(20, min_periods=5).max()
-    r_la, r_lm = df_adv["rolling_ad_ratio"].rolling(20, min_periods=5).min(), df_adv["mcclellan_osc"].rolling(20, min_periods=5).min()
-    
+    r_hm, r_lm = df_adv["mcclellan_osc"].rolling(20, min_periods=5).max(), df_adv["mcclellan_osc"].rolling(20, min_periods=5).min()
     bm_ma60 = pd.Series(bm_closes).rolling(60, min_periods=5).mean()
+
     return pd.DataFrame({
-        "Date": base_dates, "close": bm_closes, "above_20ma": above_20.values, "above_60ma": above_60.values, "above_240ma": above_240.values,
-        "new_high_count": nh_c.values, "new_low_count": nl_c.values, "new_high_ratio": (nh_c / total_valid * 100).round(2).values,
-        "new_low_ratio": (nl_c / total_valid * 100).round(2).values, "net_high_low": (nh_c - nl_c).values,
-        "rolling_ad_ratio": roll_ad, "mcclellan_osc": mcclellan,
-        "bearish_divergence": (df_adv["close"] >= r_hc - 1e-4) & ((df_adv["rolling_ad_ratio"] < r_ha - 1.5) | (df_adv["mcclellan_osc"] < r_hm - 5.0)),
-        "bullish_divergence": (df_adv["close"] <= r_lc + 1e-4) & ((df_adv["rolling_ad_ratio"] > r_la + 1.5) | (df_adv["mcclellan_osc"] > r_lm + 5.0)),
+        "Date": base_dates, "close": bm_closes,
+        "above_20ma": above_20.values, "above_60ma": above_60.values, "above_240ma": above_240.values,
+        "nh_60": nh_60.values, "nl_60": nl_60.values, "net_high_low_60": nnh_60,
+        "nh_60_ratio": (nh_60 / total_valid * 100).round(2).values,
+        "nl_60_ratio": (nl_60 / total_valid * 100).round(2).values,
+        "bftr_20": bftr_20, "ddc_20": ddc_20,
+        "mcclellan_osc": mcclellan,
+        "bearish_divergence": (df_adv["close"] >= r_hc - 1e-4) & (df_adv["mcclellan_osc"] < r_hm - 5.0),
+        "bullish_divergence": (df_adv["close"] <= r_lc + 1e-4) & (df_adv["mcclellan_osc"] > r_lm + 5.0),
         "dist_60ma_pct": (((pd.Series(bm_closes) - bm_ma60) / bm_ma60) * 100.0).round(2).values,
         "short_bull_ratio": calc_ratio((closes > ma20) & (ma20 > ma60)).values,
         "long_bull_ratio": calc_ratio((closes > ma20) & (ma20 > ma60) & (ma60 > ma120) & (ma120 > ma240)).values
@@ -468,7 +493,6 @@ with tab_portfolio:
 
 with tab_leaderboard:
     st.subheader("🔍 個股查詢")
-    
     typed_search = st.text_input("輸入股票代號或名稱查詢（支援單檔或多檔，多檔請用空白、逗號或換行分隔）", placeholder="例如：2330 聯一光 3441 2454", key="typed_search_field")
     search_query = typed_search.strip() or st.session_state.search_input_val
 
@@ -560,11 +584,39 @@ latest_breadth_dict = {}
 
 with tab_market_breadth:
     st.subheader("📊 大盤指標")
+
+    # 順勢操作模式切換指標說明字卡（可折疊）
+    with st.expander("📖 說明：順勢操作模式切換指標與判斷準則", expanded=False):
+        st.markdown("""
+        本分頁依據台股月週期（20日）與季週期（60日）量化市場動能環境，作為切換**「主升段波段進攻」**與**「震盪弱勢防守」**的客觀依據：
+
+        #### 🎯 核心指標定義與公式
+        1. **月均線廣度 ($MAB_{20}$)**：`全市場收盤 > 20MA 的個股比例 (%)`。代表短線多頭土壤是否肥沃。
+        2. **季均線廣度 ($MAB_{60}$)**：`全市場收盤 > 60MA 的個股比例 (%)`。代表中期多頭趨勢的穩定度。
+        3. **60日淨創新高指數 ($NNH_{60}$)**：`創 60 日新高家數 - 創 60 日新低家數`。衡量全市場領先股與破底股的多空差額。
+        4. **20日突破延續度 ($BFTR_{20}$)**：`近 20 日放量突破型態中，突破後第 2 日仍守穩頸線的比例 (%)`。量化隔日沖與假突破（Squat）的殺傷力。
+        5. **20日出貨日計數 ($DDC_{20}$)**：`近 20 日指數單日跌幅 ≥ 0.2% 且成交量大於前一日的次數`。評估機構大戶是否在逢高派發。
+
+        ---
+
+        #### 🚦 三階段模式切換決策矩陣
+
+        | 監控指標 | 🟢 綠燈：主升段模式 (進攻) | 🟡 黃燈：震盪整理模式 (短打) | 🔴 紅燈：弱勢出貨模式 (防守) |
+        | :--- | :--- | :--- | :--- |
+        | **均線廣度 ($MAB_{20}$)** | **$> 60\%$** 且向上發散 | **$40\% \sim 60\%$** 區間震盪 | **$< 40\%$** 且持續下滑 |
+        | **季均廣度 ($MAB_{60}$)** | **$> 50\%$** | **$35\% \sim 50\%$** | **$< 35\%$** |
+        | **新高差額 ($NNH_{60}$)** | 穩定為正（**$> +30$ 家**） | 接近 0 軸（**$-20 \sim +20$ 家**） | 明顯翻負（**$< -30$ 家**） |
+        | **突破延續度 ($BFTR_{20}$)**| **$\ge 60\%$**（突破推進順暢）| **$40\% \sim 60\%$**（頻繁橫盤洗盤）| **$< 40\%$**（突破即長黑誘多） |
+        | **出貨日計數 ($DDC_{20}$)**| **$\le 2$ 次**（無密集拋售） | **$3 \sim 4$ 次**（主力派發警戒） | **$\ge 5$ 次**（機構集中出貨） |
+        | **建議總持股曝險** | **80% ~ 100%** | **30% ~ 40%** | **0% ~ 10%（保留現金）** |
+        | **停利戰術設定** | 追求波段：未實現達 **20%+** 或月線正乖離 **30%** 移動停利 | 短線兌現：達 **6%~9%** 先出半數，持股 **3天不動時間停損** | 停止追買，嚴格執行損益兩平保本或停損砍倉 |
+        """)
+
     b_col1, b_col2 = st.columns(2)
     mkt_view = b_col1.selectbox("市場選擇", ["上市 (TWSE)", "上櫃 (TPEX)"], index=0)
     show_days = {"近 20 個交易日": 20, "近 60 個交易日": 60, "近 120 個交易日": 120}[b_col2.selectbox("時間跨度", ["近 20 個交易日", "近 60 個交易日", "近 120 個交易日"], index=1)]
 
-    with st.spinner("正在計算大盤寬度指標..."):
+    with st.spinner("正在計算大盤指標..."):
         breadth_df = compute_market_breadth_data(market_rankings, "TW" if "上市" in mkt_view else "TWO")
 
     if breadth_df is None or breadth_df.empty:
@@ -574,72 +626,94 @@ with tab_market_breadth:
         latest, prev = plot_df.iloc[-1], plot_df.iloc[-2] if len(plot_df) >= 2 else plot_df.iloc[-1]
         latest_breadth_dict = latest.to_dict()
 
+        # 即時狀態指示判斷
+        if latest["above_20ma"] >= 60 and latest["bftr_20"] >= 60 and latest["ddc_20"] <= 2:
+            st.success("🟢 **【綠燈：主升段模式】全力進攻** ｜ 獲利目標：未實現 20%+ / 月線乖離 30% ｜ 建議總持股：80% ~ 100%")
+        elif latest["above_20ma"] < 40 or latest["ddc_20"] >= 5 or latest["bftr_20"] < 40:
+            st.error("🔴 **【紅燈：弱勢出貨模式】強制防守** ｜ 全面停止追突破，嚴守保本與停損 ｜ 建議總持股：0% ~ 10%（現金為王）")
+        else:
+            st.warning("🟡 **【黃燈：震盪整理模式】短打防守** ｜ 獲利目標：6% ~ 9% 先出半數 ｜ 3 天不動時間停損 ｜ 建議總持股：30% ~ 40%")
+
         st.markdown("##### 📌 當日即時總覽")
         k1, k2, k3, k4, k5 = st.columns(5)
-        k1.metric("站上 20MA 比例", f"{latest['above_20ma']:.1f}%", f"{latest['above_20ma'] - prev['above_20ma']:+.1f}%")
-        k2.metric("短均多頭排列", f"{latest['short_bull_ratio']:.1f}%", f"{latest['short_bull_ratio'] - prev['short_bull_ratio']:+.1f}%")
-        k3.metric("52週新高家數", f"{int(latest['new_high_count'])} 家", f"{latest['new_high_ratio']:.1f}%")
-        k4.metric("滾動騰落比率 (20D)", f"{latest['rolling_ad_ratio']:.1f}%", f"{latest['rolling_ad_ratio'] - prev['rolling_ad_ratio']:+.1f}%")
-        k5.metric("大盤與 60MA 距離", f"{latest['dist_60ma_pct']:+.2f}%", f"{'🔥 季線之上' if latest['dist_60ma_pct']>=0 else '❄️ 季線之下'}")
+        k1.metric("月均線廣度 (MAB20)", f"{latest['above_20ma']:.1f}%", f"{latest['above_20ma'] - prev['above_20ma']:+.1f}%")
+        k2.metric("季均線廣度 (MAB60)", f"{latest['above_60ma']:.1f}%", f"{latest['above_60ma'] - prev['above_60ma']:+.1f}%")
+        k3.metric("60日淨創新高 (NNH60)", f"{int(latest['net_high_low_60']):+d} 家", f"新高 {int(latest['nh_60'])} / 新低 {int(latest['nl_60'])}")
+        k4.metric("20日突破延續度 (BFTR)", f"{latest['bftr_20']:.1f}%", "🔥 突破順暢" if latest['bftr_20']>=60 else ("❄️ 假突破多" if latest['bftr_20']<40 else "⚡ 橫盤洗盤"))
+        k5.metric("20日出貨日計數 (DDC)", f"{int(latest['ddc_20'])} 次", "🔴 高風險" if latest['ddc_20']>=5 else ("🟡 警戒中" if latest['ddc_20']>=3 else "🟢 安全"))
 
         st.divider()
         cfg, layout = {"scrollZoom": False, "displayModeBar": False}, dict(hovermode="x unified", margin=dict(l=40, r=20, t=40, b=30), dragmode=False, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
 
         # 1. 均線覆蓋率
-        st.markdown("#### 1. 均線覆蓋率 (%)")
-        fig1 = go.Figure([go.Scatter(x=plot_df.index, y=plot_df[c], mode="lines", name=n, line=dict(color=col, width=2)) for c, n, col in [("above_20ma", "站上 20MA (月線)", "#FF5722"), ("above_60ma", "站上 60MA (季線)", "#2196F3"), ("above_240ma", "站上 240MA (年線)", "#4CAF50")]])
+        st.markdown("#### 1. 均線廣度覆蓋率 (%) ｜ MAB20 & MAB60")
+        fig1 = go.Figure([go.Scatter(x=plot_df.index, y=plot_df[c], mode="lines", name=n, line=dict(color=col, width=2)) for c, n, col in [("above_20ma", "站上 20MA (月線廣度 MAB20)", "#FF5722"), ("above_60ma", "站上 60MA (季線廣度 MAB60)", "#2196F3"), ("above_240ma", "站上 240MA (年線)", "#4CAF50")]])
+        fig1.add_hline(y=60, line_dash="dot", line_color="green", annotation_text="60% 強勢擴張線")
         fig1.add_hline(y=50, line_dash="dash", line_color="gray", annotation_text="50% 多空分水嶺")
+        fig1.add_hline(y=40, line_dash="dot", line_color="red", annotation_text="40% 防守警戒線")
         fig1.update_layout(layout, yaxis=dict(title="比例 (%)", range=[0, 100], fixedrange=True), xaxis=dict(fixedrange=True))
         st.plotly_chart(fig1, use_container_width=True, config=cfg)
 
-        # 2. 創新高/創新低指標
-        st.markdown("#### 2. 52週創新高/新低指標與淨差")
-        fig2 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08, subplot_titles=("創新高 / 創新低比例 (%) 與家數", "新高新低差 (Net New Highs/Lows)"))
-        fig2.add_trace(go.Scatter(x=plot_df.index, y=plot_df["new_high_ratio"], mode="lines", name="創新高比例 (%)", line=dict(color="#E91E63", width=2)), row=1, col=1)
-        fig2.add_trace(go.Scatter(x=plot_df.index, y=plot_df["new_low_ratio"], mode="lines", name="創新低比例 (%)", line=dict(color="#00BCD4", width=2)), row=1, col=1)
-        fig2.add_trace(go.Bar(x=plot_df.index, y=plot_df["net_high_low"], name="新高新低家數差", marker_color=["#4CAF50" if v >= 0 else "#F44336" for v in plot_df["net_high_low"]]), row=2, col=1)
+        # 2. 60日創新高/新低指標與淨差
+        st.markdown("#### 2. 60日淨創新高指標 (NNH60)")
+        fig2 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08, subplot_titles=("60日創新高 / 創新低比例 (%)", "60日淨創新高家數差 (NNH60)"))
+        fig2.add_trace(go.Scatter(x=plot_df.index, y=plot_df["nh_60_ratio"], mode="lines", name="60日新高比例 (%)", line=dict(color="#E91E63", width=2)), row=1, col=1)
+        fig2.add_trace(go.Scatter(x=plot_df.index, y=plot_df["nl_60_ratio"], mode="lines", name="60日新低比例 (%)", line=dict(color="#00BCD4", width=2)), row=1, col=1)
+        fig2.add_trace(go.Bar(x=plot_df.index, y=plot_df["net_high_low_60"], name="60日新高新低差 (家數)", marker_color=["#4CAF50" if v >= 0 else "#F44336" for v in plot_df["net_high_low_60"]]), row=2, col=1)
+        fig2.add_hline(y=30, line_dash="dot", line_color="green", annotation_text="+30 家強勢門檻", row=2, col=1)
         fig2.add_hline(y=0, line_dash="dash", line_color="gray", row=2, col=1)
+        fig2.add_hline(y=-30, line_dash="dot", line_color="red", annotation_text="-30 家弱勢門檻", row=2, col=1)
         fig2.update_layout(layout, height=520)
         fig2.update_xaxes(fixedrange=True); fig2.update_yaxes(fixedrange=True)
         st.plotly_chart(fig2, use_container_width=True, config=cfg)
 
-        # 3. 進化版騰落指標
-        st.markdown("#### 4. 進化版騰落指標")
-        fig3 = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.07, subplot_titles=(f"{mkt_view} 指數收盤價 ＆ 背離訊號監測", f"20 日滾動騰落比率 ｜ 最新: {latest['rolling_ad_ratio']:.1f}%", f"麥克連震盪指標 ｜ 最新: {latest['mcclellan_osc']:+.1f}"))
-        fig3.add_trace(go.Scatter(x=plot_df.index, y=plot_df["close"], mode="lines", name="大盤指數收盤", line=dict(color="#212121", width=2)), row=1, col=1)
-        for cond, name_b, sym_b, c_b in [(plot_df["bearish_divergence"], "⚠️ 頂部背離", "triangle-down", "#D32F2F"), (plot_df["bullish_divergence"], "🌱 底部背離", "triangle-up", "#388E3C")]:
-            pts = plot_df[cond]
-            if not pts.empty: fig3.add_trace(go.Scatter(x=pts.index, y=pts["close"], mode="markers", name=name_b, marker=dict(symbol=sym_b, size=11, color=c_b)), row=1, col=1)
-        fig3.add_trace(go.Scatter(x=plot_df.index, y=plot_df["rolling_ad_ratio"], mode="lines", name="滾動 AD 比率 (%)", line=dict(color="#673AB7", width=2.2)), row=2, col=1)
-        for y_v, col_l, ann in [(75, "#E91E63", "75% 過熱超買"), (50, "gray", "50% 多空中軸"), (25, "#00BCD4", "25% 冰凍超賣")]:
-            fig3.add_hline(y=y_v, line_dash="dash", line_color=col_l, annotation_text=ann, annotation_position="top right" if y_v>=50 else "bottom right", row=2, col=1)
-        fig3.add_trace(go.Bar(x=plot_df.index, y=plot_df["mcclellan_osc"], name="McClellan 震盪動能", marker_color=["#F44336" if v >= 0 else "#4CAF50" for v in plot_df["mcclellan_osc"]]), row=3, col=1)
-        fig3.add_hline(y=0, line_dash="solid", line_color="black", row=3, col=1)
-        fig3.update_layout(layout, height=780)
-        fig3.update_xaxes(fixedrange=True); fig3.update_yaxes(title_text="指數點位", row=1, col=1, fixedrange=True); fig3.update_yaxes(title_text="比率 (%)", range=[0, 100], row=2, col=1, fixedrange=True); fig3.update_yaxes(title_text="震盪數值", row=3, col=1, fixedrange=True)
+        # 3. 突破延續度與出貨日計數
+        st.markdown("#### 3. 動能品質與出貨監控 ｜ BFTR20 ＆ DDC20")
+        fig3 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08, subplot_titles=(f"20 日突破延續度 (BFTR20) ｜ 最新: {latest['bftr_20']:.1f}%", f"20 日出貨日計數器 (DDC20) ｜ 最新: {int(latest['ddc_20'])} 次"))
+        fig3.add_trace(go.Scatter(x=plot_df.index, y=plot_df["bftr_20"], mode="lines+markers", name="突破延續度 (%)", line=dict(color="#673AB7", width=2)), row=1, col=1)
+        fig3.add_hline(y=60, line_dash="dot", line_color="green", annotation_text="60% 真突破順暢", row=1, col=1)
+        fig3.add_hline(y=40, line_dash="dot", line_color="red", annotation_text="40% 假突破高危", row=1, col=1)
+        fig3.add_trace(go.Bar(x=plot_df.index, y=plot_df["ddc_20"], name="20日出貨天數", marker_color=["#D32F2F" if v >= 5 else ("#FF9800" if v >= 3 else "#388E3C") for v in plot_df["ddc_20"]]), row=2, col=1)
+        fig3.add_hline(y=5, line_dash="dash", line_color="red", annotation_text="5 次強制防守", row=2, col=1)
+        fig3.add_hline(y=3, line_dash="dot", line_color="orange", annotation_text="3 次減速警戒", row=2, col=1)
+        fig3.update_layout(layout, height=540)
+        fig3.update_xaxes(fixedrange=True); fig3.update_yaxes(fixedrange=True)
         st.plotly_chart(fig3, use_container_width=True, config=cfg)
 
-        # 4. 均線多頭排列
+        # 4. 指數收盤與麥克連震盪指標
+        st.markdown("#### 4. 大盤指數背離監測 ＆ 麥克連震盪指標")
+        fig4 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08, subplot_titles=(f"{mkt_view} 指數收盤價 ＆ 背離訊號監測", f"麥克連震盪指標 ｜ 最新: {latest['mcclellan_osc']:+.1f}"))
+        fig4.add_trace(go.Scatter(x=plot_df.index, y=plot_df["close"], mode="lines", name="大盤指數收盤", line=dict(color="#212121", width=2)), row=1, col=1)
+        for cond, name_b, sym_b, c_b in [(plot_df["bearish_divergence"], "⚠️ 頂部背離", "triangle-down", "#D32F2F"), (plot_df["bullish_divergence"], "🌱 底部背離", "triangle-up", "#388E3C")]:
+            pts = plot_df[cond]
+            if not pts.empty: fig4.add_trace(go.Scatter(x=pts.index, y=pts["close"], mode="markers", name=name_b, marker=dict(symbol=sym_b, size=11, color=c_b)), row=1, col=1)
+        fig4.add_trace(go.Bar(x=plot_df.index, y=plot_df["mcclellan_osc"], name="McClellan 震盪動能", marker_color=["#F44336" if v >= 0 else "#4CAF50" for v in plot_df["mcclellan_osc"]]), row=2, col=1)
+        fig4.add_hline(y=0, line_dash="solid", line_color="black", row=2, col=1)
+        fig4.update_layout(layout, height=560)
+        fig4.update_xaxes(fixedrange=True); fig4.update_yaxes(fixedrange=True)
+        st.plotly_chart(fig4, use_container_width=True, config=cfg)
+
+        # 5. 均線多頭排列
         st.markdown("#### 5. 均線多頭排列比例 (%)")
-        fig4 = go.Figure([
+        fig5 = go.Figure([
             go.Scatter(x=plot_df.index, y=plot_df["short_bull_ratio"], mode="lines", name="短均多頭排列", line=dict(color="#9C27B0", width=2)),
             go.Scatter(x=plot_df.index, y=plot_df["long_bull_ratio"], mode="lines", name="長均多頭排列", line=dict(color="#3F51B5", width=2))
         ])
-        fig4.add_hline(y=50, line_dash="dash", line_color="gray", annotation_text="50% 多空分水嶺")
-        fig4.update_layout(layout, yaxis=dict(title="多頭排列比例 (%)", range=[0, 100], fixedrange=True), xaxis=dict(fixedrange=True))
-        st.plotly_chart(fig4, use_container_width=True, config=cfg)
+        fig5.add_hline(y=50, line_dash="dash", line_color="gray", annotation_text="50% 多空分水嶺")
+        fig5.update_layout(layout, yaxis=dict(title="多頭排列比例 (%)", range=[0, 100], fixedrange=True), xaxis=dict(fixedrange=True))
+        st.plotly_chart(fig5, use_container_width=True, config=cfg)
 
-        # 5. 季線距離
+        # 6. 季線距離
         st.markdown(f"#### 6. 大盤現價與 60日 MA 距離 (%) ｜ 最新：**{latest['dist_60ma_pct']:+.2f}%**")
-        fig5 = go.Figure([
+        fig6 = go.Figure([
             go.Bar(x=plot_df.index, y=plot_df["dist_60ma_pct"], name="季線乖離距離 (%)", marker_color=["#F44336" if v >= 0 else "#4CAF50" for v in plot_df["dist_60ma_pct"]]),
             go.Scatter(x=plot_df.index, y=plot_df["dist_60ma_pct"], mode="lines+markers", name="趨勢軌跡", line=dict(color="#1976D2", width=1.5), marker=dict(size=4))
         ])
-        fig5.add_hline(y=0, line_dash="solid", line_color="black")
-        fig5.add_hline(y=10, line_dash="dash", line_color="#E91E63", annotation_text="+10% 正向過熱區", annotation_position="top right")
-        fig5.add_hline(y=-10, line_dash="dash", line_color="#00BCD4", annotation_text="-10% 負向超跌區", annotation_position="bottom right")
-        fig5.update_layout(layout, yaxis=dict(title="距離 (%)", fixedrange=True), xaxis=dict(fixedrange=True))
-        st.plotly_chart(fig5, use_container_width=True, config=cfg)
+        fig6.add_hline(y=0, line_dash="solid", line_color="black")
+        fig6.add_hline(y=10, line_dash="dash", line_color="#E91E63", annotation_text="+10% 正向過熱區", annotation_position="top right")
+        fig6.add_hline(y=-10, line_dash="dash", line_color="#00BCD4", annotation_text="-10% 負向超跌區", annotation_position="bottom right")
+        fig6.update_layout(layout, yaxis=dict(title="距離 (%)", fixedrange=True), xaxis=dict(fixedrange=True))
+        st.plotly_chart(fig6, use_container_width=True, config=cfg)
 
 with tab_ai:
     st.subheader("🤖 Gemini 順勢交易智能助理")
