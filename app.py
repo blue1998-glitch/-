@@ -282,15 +282,16 @@ def compute_market_breadth_data(market_list, mkt_filter="TW"):
     is_dist = (bm_s_close.pct_change() <= -0.002) & (bm_s_vol > bm_s_vol.shift(1))
     ddc_20 = is_dist.rolling(20, min_periods=1).sum().fillna(0).astype(int).values
 
-    # 5. 麥克連震盪指標 (已徹底移除滾動騰落比率)
-    diff = closes.diff()
-    adv, dec = (diff > 0).sum(axis=1).values, (diff < 0).sum(axis=1).values
-    net_adv = pd.Series(adv - dec)
-    mcclellan = (net_adv.ewm(span=19, adjust=False).mean() - net_adv.ewm(span=39, adjust=False).mean()).round(2).values
+    # 5. 60 日相對強度領頭羊動能 (Top 10% RS Momentum)
+    ret_60 = closes.pct_change(60)
+    ranks_60 = ret_60.rank(axis=1, pct=True)
+    daily_ret = closes.pct_change()
+    leader_daily = daily_ret.where(ranks_60 >= 0.90).mean(axis=1).fillna(0)
+    leader_cum = (1 + leader_daily).cumprod()
+    leader_index = (leader_cum / leader_cum.iloc[0] * 100.0).round(2)
+    leader_ma20 = leader_index.rolling(20, min_periods=5).mean().round(2)
+    leader_dist_ma20 = (((leader_index - leader_ma20) / leader_ma20) * 100.0).round(2)
 
-    df_adv = pd.DataFrame({"close": bm_closes, "mcclellan_osc": mcclellan})
-    r_hc, r_lc = df_adv["close"].rolling(20, min_periods=5).max(), df_adv["close"].rolling(20, min_periods=5).min()
-    r_hm, r_lm = df_adv["mcclellan_osc"].rolling(20, min_periods=5).max(), df_adv["mcclellan_osc"].rolling(20, min_periods=5).min()
     bm_ma60 = pd.Series(bm_closes).rolling(60, min_periods=5).mean()
 
     return pd.DataFrame({
@@ -300,9 +301,7 @@ def compute_market_breadth_data(market_list, mkt_filter="TW"):
         "nh_60_ratio": (nh_60 / total_valid * 100).round(2).values,
         "nl_60_ratio": (nl_60 / total_valid * 100).round(2).values,
         "bftr_20": bftr_20, "ddc_20": ddc_20,
-        "mcclellan_osc": mcclellan,
-        "bearish_divergence": (df_adv["close"] >= r_hc - 1e-4) & (df_adv["mcclellan_osc"] < r_hm - 5.0),
-        "bullish_divergence": (df_adv["close"] <= r_lc + 1e-4) & (df_adv["mcclellan_osc"] > r_lm + 5.0),
+        "leader_index": leader_index.values, "leader_ma20": leader_ma20.values, "leader_dist_ma20": leader_dist_ma20.values,
         "dist_60ma_pct": (((pd.Series(bm_closes) - bm_ma60) / bm_ma60) * 100.0).round(2).values,
         "short_bull_ratio": calc_ratio((closes > ma20) & (ma20 > ma60)).values,
         "long_bull_ratio": calc_ratio((closes > ma20) & (ma20 > ma60) & (ma60 > ma120) & (ma120 > ma240)).values
@@ -593,9 +592,10 @@ with tab_market_breadth:
         #### 🎯 核心指標定義與公式
         1. **月均線廣度 ($MAB_{20}$)**：`全市場收盤 > 20MA 的個股比例 (%)`。代表短線多頭土壤是否肥沃。
         2. **季均線廣度 ($MAB_{60}$)**：`全市場收盤 > 60MA 的個股比例 (%)`。代表中期多頭趨勢的穩定度。
-        3. **60日淨創新高指數 ($NNH_{60}$)**：`創 60 日新高家數 - 創 60 日新低家數`。衡量全市場領先股與破底股的多空差額。
-        4. **20日突破延續度 ($BFTR_{20}$)**：`近 20 日放量突破型態中，突破後第 2 日仍守穩頸線的比例 (%)`。量化隔日沖與假突破（Squat）的殺傷力。
-        5. **20日出貨日計數 ($DDC_{20}$)**：`近 20 日指數單日跌幅 ≥ 0.2% 且成交量大於前一日的次數`。評估機構大戶是否在逢高派發。
+        3. **60日領頭羊動能 (Top 10% RS)**：全市場過去 60 日相對大盤漲幅前 10% 強勢股的等權動能指數與其 20MA。站穩 20MA 代表領頭羊持續攻堅；若跌破 20MA 則意味著最強的部隊已被主力提款，波段行情面臨終結。
+        4. **60日淨創新高指數 ($NNH_{60}$)**：`創 60 日新高家數 - 創 60 日新低家數`。衡量全市場領先股與破底股的多空差額。
+        5. **20日突破延續度 ($BFTR_{20}$)**：`近 20 日放量突破型態中，突破後第 2 日仍守穩頸線的比例 (%)`。量化隔日沖與假突破（Squat）的殺傷力。
+        6. **20日出貨日計數 ($DDC_{20}$)**：`近 20 日指數單日跌幅 ≥ 0.2% 且成交量大於前一日的次數`。評估機構大戶是否在逢高派發。
 
         ---
 
@@ -605,6 +605,7 @@ with tab_market_breadth:
         | :--- | :--- | :--- | :--- |
         | **均線廣度 ($MAB_{20}$)** | **$> 60\%$** 且向上發散 | **$40\% \sim 60\%$** 區間震盪 | **$< 40\%$** 且持續下滑 |
         | **季均廣度 ($MAB_{60}$)** | **$> 50\%$** | **$35\% \sim 50\%$** | **$< 35\%$** |
+        | **領頭羊動能 (Top 10% RS)**| **站穩 20MA** 且持續創高 | 於 20MA 附近來回洗盤 | **帶量摜破 20MA** (領先族群補跌) |
         | **新高差額 ($NNH_{60}$)** | 穩定為正（**$> +30$ 家**） | 接近 0 軸（**$-20 \sim +20$ 家**） | 明顯翻負（**$< -30$ 家**） |
         | **突破延續度 ($BFTR_{20}$)**| **$\ge 60\%$**（突破推進順暢）| **$40\% \sim 60\%$**（頻繁橫盤洗盤）| **$< 40\%$**（突破即長黑誘多） |
         | **出貨日計數 ($DDC_{20}$)**| **$\le 2$ 次**（無密集拋售） | **$3 \sim 4$ 次**（主力派發警戒） | **$\ge 5$ 次**（機構集中出貨） |
@@ -627,69 +628,79 @@ with tab_market_breadth:
         latest_breadth_dict = latest.to_dict()
 
         # 即時狀態指示判斷
-        if latest["above_20ma"] >= 60 and latest["bftr_20"] >= 60 and latest["ddc_20"] <= 2:
-            st.success("🟢 **【綠燈：主升段模式】全力進攻** ｜ 獲利目標：未實現 20%+ / 月線乖離 30% ｜ 建議總持股：80% ~ 100%")
-        elif latest["above_20ma"] < 40 or latest["ddc_20"] >= 5 or latest["bftr_20"] < 40:
-            st.error("🔴 **【紅燈：弱勢出貨模式】強制防守** ｜ 全面停止追突破，嚴守保本與停損 ｜ 建議總持股：0% ~ 10%（現金為王）")
+        is_green = (latest["above_20ma"] >= 60 and latest["bftr_20"] >= 60 and latest["ddc_20"] <= 2 and latest["leader_dist_ma20"] >= 0)
+        is_red = (latest["above_20ma"] < 40 or latest["ddc_20"] >= 5 or latest["bftr_20"] < 40 or latest["leader_dist_ma20"] < -3.0)
+
+        if is_green:
+            st.success("🟢 **【綠燈：主升段模式】全力進攻** ｜ 獲利目標：未實現 20%+ / 月線乖離 30% ｜ 領頭羊強勁守穩20MA ｜ 建議總持股：80% ~ 100%")
+        elif is_red:
+            st.error("🔴 **【紅燈：弱勢出貨模式】強制防守** ｜ 全面停止追突破，嚴守保本與停損 ｜ 領頭羊轉弱或出貨密集 ｜ 建議總持股：0% ~ 10%（現金為王）")
         else:
             st.warning("🟡 **【黃燈：震盪整理模式】短打防守** ｜ 獲利目標：6% ~ 9% 先出半數 ｜ 3 天不動時間停損 ｜ 建議總持股：30% ~ 40%")
 
         st.markdown("##### 📌 當日即時總覽")
-        k1, k2, k3, k4, k5 = st.columns(5)
+        k1, k2, k3, k4, k5, k6 = st.columns(6)
         k1.metric("月均線廣度 (MAB20)", f"{latest['above_20ma']:.1f}%", f"{latest['above_20ma'] - prev['above_20ma']:+.1f}%")
         k2.metric("季均線廣度 (MAB60)", f"{latest['above_60ma']:.1f}%", f"{latest['above_60ma'] - prev['above_60ma']:+.1f}%")
-        k3.metric("60日淨創新高 (NNH60)", f"{int(latest['net_high_low_60']):+d} 家", f"新高 {int(latest['nh_60'])} / 新低 {int(latest['nl_60'])}")
-        k4.metric("20日突破延續度 (BFTR)", f"{latest['bftr_20']:.1f}%", "🔥 突破順暢" if latest['bftr_20']>=60 else ("❄️ 假突破多" if latest['bftr_20']<40 else "⚡ 橫盤洗盤"))
-        k5.metric("20日出貨日計數 (DDC)", f"{int(latest['ddc_20'])} 次", "🔴 高風險" if latest['ddc_20']>=5 else ("🟡 警戒中" if latest['ddc_20']>=3 else "🟢 安全"))
+        k3.metric("領頭羊動能 (Top10%)", f"{latest['leader_index']:.1f}", f"乖離20MA: {latest['leader_dist_ma20']:+.1f}%")
+        k4.metric("60日淨創新高 (NNH60)", f"{int(latest['net_high_low_60']):+d} 家", f"新高 {int(latest['nh_60'])} / 新低 {int(latest['nl_60'])}")
+        k5.metric("20日突破延續度 (BFTR)", f"{latest['bftr_20']:.1f}%", "🔥 突破順暢" if latest['bftr_20']>=60 else ("❄️ 假突破多" if latest['bftr_20']<40 else "⚡ 橫盤洗盤"))
+        k6.metric("20日出貨日計數 (DDC)", f"{int(latest['ddc_20'])} 次", "🔴 高風險" if latest['ddc_20']>=5 else ("🟡 警戒中" if latest['ddc_20']>=3 else "🟢 安全"))
 
         st.divider()
-        cfg, layout = {"scrollZoom": False, "displayModeBar": False}, dict(hovermode="x unified", margin=dict(l=40, r=20, t=40, b=30), dragmode=False, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        cfg = {"scrollZoom": False, "displayModeBar": False}
+        layout = dict(
+            hovermode="x unified",
+            margin=dict(l=45, r=30, t=55, b=35),
+            dragmode=False,
+            legend=dict(orientation="h", yanchor="bottom", y=1.04, xanchor="left", x=0, font=dict(size=11))
+        )
 
         # 1. 均線覆蓋率
         st.markdown("#### 1. 均線廣度覆蓋率 (%) ｜ MAB20 & MAB60")
         fig1 = go.Figure([go.Scatter(x=plot_df.index, y=plot_df[c], mode="lines", name=n, line=dict(color=col, width=2)) for c, n, col in [("above_20ma", "站上 20MA (月線廣度 MAB20)", "#FF5722"), ("above_60ma", "站上 60MA (季線廣度 MAB60)", "#2196F3"), ("above_240ma", "站上 240MA (年線)", "#4CAF50")]])
-        fig1.add_hline(y=60, line_dash="dot", line_color="green", annotation_text="60% 強勢擴張線")
-        fig1.add_hline(y=50, line_dash="dash", line_color="gray", annotation_text="50% 多空分水嶺")
-        fig1.add_hline(y=40, line_dash="dot", line_color="red", annotation_text="40% 防守警戒線")
+        fig1.add_hline(y=60, line_dash="dot", line_color="green", annotation_text="60% 強勢擴張", annotation_position="top left", annotation_font=dict(size=10, color="green"))
+        fig1.add_hline(y=50, line_dash="dash", line_color="gray", annotation_text="50% 多空分水嶺", annotation_position="bottom right", annotation_font=dict(size=10, color="gray"))
+        fig1.add_hline(y=40, line_dash="dot", line_color="red", annotation_text="40% 防守警戒", annotation_position="bottom left", annotation_font=dict(size=10, color="red"))
         fig1.update_layout(layout, yaxis=dict(title="比例 (%)", range=[0, 100], fixedrange=True), xaxis=dict(fixedrange=True))
         st.plotly_chart(fig1, use_container_width=True, config=cfg)
 
         # 2. 60日創新高/新低指標與淨差
         st.markdown("#### 2. 60日淨創新高指標 (NNH60)")
-        fig2 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08, subplot_titles=("60日創新高 / 創新低比例 (%)", "60日淨創新高家數差 (NNH60)"))
+        fig2 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.12, subplot_titles=("60日創新高 / 創新低比例 (%)", "60日淨創新高家數差 (NNH60)"))
         fig2.add_trace(go.Scatter(x=plot_df.index, y=plot_df["nh_60_ratio"], mode="lines", name="60日新高比例 (%)", line=dict(color="#E91E63", width=2)), row=1, col=1)
         fig2.add_trace(go.Scatter(x=plot_df.index, y=plot_df["nl_60_ratio"], mode="lines", name="60日新低比例 (%)", line=dict(color="#00BCD4", width=2)), row=1, col=1)
         fig2.add_trace(go.Bar(x=plot_df.index, y=plot_df["net_high_low_60"], name="60日新高新低差 (家數)", marker_color=["#4CAF50" if v >= 0 else "#F44336" for v in plot_df["net_high_low_60"]]), row=2, col=1)
-        fig2.add_hline(y=30, line_dash="dot", line_color="green", annotation_text="+30 家強勢門檻", row=2, col=1)
+        fig2.add_hline(y=30, line_dash="dot", line_color="green", annotation_text="+30 家強勢門檻", annotation_position="top left", annotation_font=dict(size=10, color="green"), row=2, col=1)
         fig2.add_hline(y=0, line_dash="dash", line_color="gray", row=2, col=1)
-        fig2.add_hline(y=-30, line_dash="dot", line_color="red", annotation_text="-30 家弱勢門檻", row=2, col=1)
+        fig2.add_hline(y=-30, line_dash="dot", line_color="red", annotation_text="-30 家弱勢門檻", annotation_position="bottom left", annotation_font=dict(size=10, color="red"), row=2, col=1)
         fig2.update_layout(layout, height=520)
         fig2.update_xaxes(fixedrange=True); fig2.update_yaxes(fixedrange=True)
         st.plotly_chart(fig2, use_container_width=True, config=cfg)
 
         # 3. 突破延續度與出貨日計數
         st.markdown("#### 3. 動能品質與出貨監控 ｜ BFTR20 ＆ DDC20")
-        fig3 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08, subplot_titles=(f"20 日突破延續度 (BFTR20) ｜ 最新: {latest['bftr_20']:.1f}%", f"20 日出貨日計數器 (DDC20) ｜ 最新: {int(latest['ddc_20'])} 次"))
+        fig3 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.12, subplot_titles=(f"20 日突破延續度 (BFTR20) ｜ 最新: {latest['bftr_20']:.1f}%", f"20 日出貨日計數器 (DDC20) ｜ 最新: {int(latest['ddc_20'])} 次"))
         fig3.add_trace(go.Scatter(x=plot_df.index, y=plot_df["bftr_20"], mode="lines+markers", name="突破延續度 (%)", line=dict(color="#673AB7", width=2)), row=1, col=1)
-        fig3.add_hline(y=60, line_dash="dot", line_color="green", annotation_text="60% 真突破順暢", row=1, col=1)
-        fig3.add_hline(y=40, line_dash="dot", line_color="red", annotation_text="40% 假突破高危", row=1, col=1)
+        fig3.add_hline(y=60, line_dash="dot", line_color="green", annotation_text="60% 真突破順暢", annotation_position="top left", annotation_font=dict(size=10, color="green"), row=1, col=1)
+        fig3.add_hline(y=40, line_dash="dot", line_color="red", annotation_text="40% 假突破高危", annotation_position="bottom left", annotation_font=dict(size=10, color="red"), row=1, col=1)
         fig3.add_trace(go.Bar(x=plot_df.index, y=plot_df["ddc_20"], name="20日出貨天數", marker_color=["#D32F2F" if v >= 5 else ("#FF9800" if v >= 3 else "#388E3C") for v in plot_df["ddc_20"]]), row=2, col=1)
-        fig3.add_hline(y=5, line_dash="dash", line_color="red", annotation_text="5 次強制防守", row=2, col=1)
-        fig3.add_hline(y=3, line_dash="dot", line_color="orange", annotation_text="3 次減速警戒", row=2, col=1)
+        fig3.add_hline(y=5, line_dash="dash", line_color="red", annotation_text="5 次強制防守", annotation_position="top left", annotation_font=dict(size=10, color="red"), row=2, col=1)
+        fig3.add_hline(y=3, line_dash="dot", line_color="orange", annotation_text="3 次減速警戒", annotation_position="bottom left", annotation_font=dict(size=10, color="orange"), row=2, col=1)
         fig3.update_layout(layout, height=540)
         fig3.update_xaxes(fixedrange=True); fig3.update_yaxes(fixedrange=True)
         st.plotly_chart(fig3, use_container_width=True, config=cfg)
 
-        # 4. 指數收盤與麥克連震盪指標
-        st.markdown("#### 4. 大盤指數背離監測 ＆ 麥克連震盪指標")
-        fig4 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08, subplot_titles=(f"{mkt_view} 指數收盤價 ＆ 背離訊號監測", f"麥克連震盪指標 ｜ 最新: {latest['mcclellan_osc']:+.1f}"))
-        fig4.add_trace(go.Scatter(x=plot_df.index, y=plot_df["close"], mode="lines", name="大盤指數收盤", line=dict(color="#212121", width=2)), row=1, col=1)
-        for cond, name_b, sym_b, c_b in [(plot_df["bearish_divergence"], "⚠️ 頂部背離", "triangle-down", "#D32F2F"), (plot_df["bullish_divergence"], "🌱 底部背離", "triangle-up", "#388E3C")]:
-            pts = plot_df[cond]
-            if not pts.empty: fig4.add_trace(go.Scatter(x=pts.index, y=pts["close"], mode="markers", name=name_b, marker=dict(symbol=sym_b, size=11, color=c_b)), row=1, col=1)
-        fig4.add_trace(go.Bar(x=plot_df.index, y=plot_df["mcclellan_osc"], name="McClellan 震盪動能", marker_color=["#F44336" if v >= 0 else "#4CAF50" for v in plot_df["mcclellan_osc"]]), row=2, col=1)
+        # 4. 60日領頭羊動能 (Top 10% RS Momentum)
+        st.markdown(f"#### 4. 60日相對強度領頭羊動能 (Top 10% RS) ｜ 最新指數: **{latest['leader_index']:.1f}** (乖離 20MA: **{latest['leader_dist_ma20']:+.1f}%**)")
+        fig4 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.12, subplot_titles=("領頭羊動能指數 (Top 10% RS) 與 20MA 軌跡", "領頭羊指數與 20MA 乖離距離 (%)"))
+        fig4.add_trace(go.Scatter(x=plot_df.index, y=plot_df["leader_index"], mode="lines", name="領頭羊動能指數", line=dict(color="#FF9800", width=2.2)), row=1, col=1)
+        fig4.add_trace(go.Scatter(x=plot_df.index, y=plot_df["leader_ma20"], mode="lines", name="領頭羊 20MA", line=dict(color="#1976D2", width=1.8, dash="dash")), row=1, col=1)
+        fig4.add_trace(go.Bar(x=plot_df.index, y=plot_df["leader_dist_ma20"], name="領頭羊乖離 20MA (%)", marker_color=["#4CAF50" if v >= 0 else "#F44336" for v in plot_df["leader_dist_ma20"]]), row=2, col=1)
         fig4.add_hline(y=0, line_dash="solid", line_color="black", row=2, col=1)
-        fig4.update_layout(layout, height=560)
+        fig4.add_hline(y=5, line_dash="dot", line_color="green", annotation_text="+5% 動能噴出", annotation_position="top left", annotation_font=dict(size=10, color="green"), row=2, col=1)
+        fig4.add_hline(y=-3, line_dash="dot", line_color="red", annotation_text="-3% 領頭羊轉弱", annotation_position="bottom left", annotation_font=dict(size=10, color="red"), row=2, col=1)
+        fig4.update_layout(layout, height=540)
         fig4.update_xaxes(fixedrange=True); fig4.update_yaxes(fixedrange=True)
         st.plotly_chart(fig4, use_container_width=True, config=cfg)
 
@@ -699,7 +710,7 @@ with tab_market_breadth:
             go.Scatter(x=plot_df.index, y=plot_df["short_bull_ratio"], mode="lines", name="短均多頭排列", line=dict(color="#9C27B0", width=2)),
             go.Scatter(x=plot_df.index, y=plot_df["long_bull_ratio"], mode="lines", name="長均多頭排列", line=dict(color="#3F51B5", width=2))
         ])
-        fig5.add_hline(y=50, line_dash="dash", line_color="gray", annotation_text="50% 多空分水嶺")
+        fig5.add_hline(y=50, line_dash="dash", line_color="gray", annotation_text="50% 多空分水嶺", annotation_position="top left", annotation_font=dict(size=10, color="gray"))
         fig5.update_layout(layout, yaxis=dict(title="多頭排列比例 (%)", range=[0, 100], fixedrange=True), xaxis=dict(fixedrange=True))
         st.plotly_chart(fig5, use_container_width=True, config=cfg)
 
@@ -710,8 +721,8 @@ with tab_market_breadth:
             go.Scatter(x=plot_df.index, y=plot_df["dist_60ma_pct"], mode="lines+markers", name="趨勢軌跡", line=dict(color="#1976D2", width=1.5), marker=dict(size=4))
         ])
         fig6.add_hline(y=0, line_dash="solid", line_color="black")
-        fig6.add_hline(y=10, line_dash="dash", line_color="#E91E63", annotation_text="+10% 正向過熱區", annotation_position="top right")
-        fig6.add_hline(y=-10, line_dash="dash", line_color="#00BCD4", annotation_text="-10% 負向超跌區", annotation_position="bottom right")
+        fig6.add_hline(y=10, line_dash="dash", line_color="#E91E63", annotation_text="+10% 正向過熱區", annotation_position="top left", annotation_font=dict(size=10, color="#E91E63"))
+        fig6.add_hline(y=-10, line_dash="dash", line_color="#00BCD4", annotation_text="-10% 負向超跌區", annotation_position="bottom left", annotation_font=dict(size=10, color="#00BCD4"))
         fig6.update_layout(layout, yaxis=dict(title="距離 (%)", fixedrange=True), xaxis=dict(fixedrange=True))
         st.plotly_chart(fig6, use_container_width=True, config=cfg)
 
