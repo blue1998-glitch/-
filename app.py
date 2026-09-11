@@ -314,10 +314,308 @@ def render_metric_grid(pairs):
         c2.metric(l2, v2, d2)
 
 # ==========================================
+# 順勢交易生命週期狀態機與 Watchlist 模組
+# ==========================================
+WATCHLIST_COLS = ["symbol", "name", "theme", "created_date", "stage", "prev_stage", "substate", "base_count", "pivot_price", "strategy_tranches", "transition_date", "is_active"]
+
+STRATEGY_TEMPLATES = {
+    "醞釀期 (Incubation / VCP)": {
+        "tranches": 2, "ratios": "各 50%", 
+        "rule": "第 1 批：極度窒息量（VDU）收縮試單；第 2 批：放量突破頸線樞紐加碼",
+        "stop_loss_type": "整理區最新收縮波段低點 (Swing Low)"
+    },
+    "初升段 (Stage 2A Breakout)": {
+        "tranches": 2, "ratios": "各 50%", 
+        "rule": "第 1 批：長紅實體 >=3% 帶量突破進場；第 2 批：回測守穩頸線/5MA 補滿",
+        "stop_loss_type": "突破長紅低點或起漲 20MA"
+    },
+    "主升段 (Stage 2B Trend)": {
+        "tranches": 1, "ratios": "100% (一次到位)", 
+        "rule": "嚴格多頭排列，縮量回測 10MA/20MA 守穩轉強單筆進場",
+        "stop_loss_type": "20MA 下方 1~2 檔或前波段低點"
+    },
+    "末升段 (Stage 3 Climax)": {
+        "tranches": 0, "ratios": "0% (禁止追買)", 
+        "rule": "嚴禁開新倉；持有者啟動 5MA 緊縮移動停利（跌破先調節半數）",
+        "stop_loss_type": "跌破 5MA/10MA 強制停利"
+    },
+    "出貨期 (Distribution)": {
+        "tranches": 0, "ratios": "0% (全面防守)", 
+        "rule": "嚴禁買進；全面清空持股現金為王",
+        "stop_loss_type": "無條件停損出場"
+    },
+    "打底期 (Stage 1 Basing / Idle)": {
+        "tranches": 0, "ratios": "0% (觀望等待)", 
+        "rule": "均線無方向性，等待收斂或右側轉強訊號",
+        "stop_loss_type": "無"
+    }
+}
+
+def load_watchlist():
+    conn = _get_gsheet_conn()
+    if conn:
+        try:
+            df = conn.read(worksheet="watchlist", ttl=0)
+            if df is not None and not df.empty:
+                for c in WATCHLIST_COLS:
+                    if c not in df.columns: df[c] = ""
+                active_mask = df["is_active"].astype(str).str.lower() == "true"
+                return df[active_mask].to_dict("records")
+        except Exception: pass
+    return []
+
+def save_to_watchlist(record):
+    conn = _get_gsheet_conn()
+    if conn:
+        try:
+            try: df = conn.read(worksheet="watchlist", ttl=0)
+            except Exception: df = pd.DataFrame(columns=WATCHLIST_COLS)
+            if df is None or df.empty: df = pd.DataFrame(columns=WATCHLIST_COLS)
+            for c in WATCHLIST_COLS:
+                if c not in df.columns: df[c] = ""
+            sym = str(record.get("symbol", "")).strip()
+            df["symbol"] = df["symbol"].astype(str).str.strip()
+            if sym in df["symbol"].values:
+                idx = df[df["symbol"] == sym].index[0]
+                old_stg = str(df.at[idx, "stage"])
+                if old_stg and old_stg != record.get("stage"):
+                    record["prev_stage"] = old_stg
+                    record["transition_date"] = get_tw_now_str("%Y-%m-%d")
+                for k, v in record.items(): df.at[idx, k] = v
+            else:
+                record.setdefault("prev_stage", "")
+                record.setdefault("transition_date", get_tw_now_str("%Y-%m-%d"))
+                df = pd.concat([df, pd.DataFrame([record])], ignore_index=True)
+            conn.update(worksheet="watchlist", data=df)
+            return True
+        except Exception as e:
+            st.error(f"Watchlist 寫入失敗: {e}")
+    return False
+
+def remove_from_watchlist(sym):
+    conn = _get_gsheet_conn()
+    if conn:
+        try:
+            df = conn.read(worksheet="watchlist", ttl=0)
+            if df is not None and not df.empty:
+                df["symbol"] = df["symbol"].astype(str).str.strip()
+                df = df[df["symbol"] != str(sym).strip()]
+                conn.update(worksheet="watchlist", data=df)
+                return True
+        except Exception as e:
+            st.error(f"剔除失敗: {e}")
+    return False
+
+def calculate_technical_features(df_daily: pd.DataFrame, df_weekly: pd.DataFrame) -> dict:
+    c, v, h, l = df_daily['Close'], df_daily['Volume'], df_daily['High'], df_daily['Low']
+    ma = {f"ma{d}": c.rolling(d, min_periods=min(len(c), max(3, d // 4))).mean() for d in [5, 20, 60, 130, 260]}
+    w_close = df_weekly['Close'] if not df_weekly.empty and 'Close' in df_weekly.columns else c
+    w_ma = {f"wma{w}": w_close.rolling(w, min_periods=min(len(w_close), max(2, w // 4))).mean() for w in [4, 12, 26, 52]}
+
+    slope_20 = (ma['ma20'].iloc[-1] - ma['ma20'].iloc[-6]) / ma['ma20'].iloc[-6] if len(ma['ma20']) >= 6 and ma['ma20'].iloc[-6] > 0 else 0.0
+    slope_60 = (ma['ma60'].iloc[-1] - ma['ma60'].iloc[-11]) / ma['ma60'].iloc[-11] if len(ma['ma60']) >= 11 and ma['ma60'].iloc[-11] > 0 else 0.0
+    slope_130 = (ma['ma130'].iloc[-1] - ma['ma130'].iloc[-11]) / ma['ma130'].iloc[-11] if len(ma['ma130']) >= 11 and ma['ma130'].iloc[-11] > 0 else 0.0
+    slope_260 = (ma['ma260'].iloc[-1] - ma['ma260'].iloc[-21]) / ma['ma260'].iloc[-21] if len(ma['ma260']) >= 21 and ma['ma260'].iloc[-21] > 0 else 0.0
+
+    tr = pd.concat([h - l, (h - c.shift(1)).abs(), (l - c.shift(1)).abs()], axis=1).max(axis=1)
+    atr10 = tr.rolling(10, min_periods=3).mean().iloc[-1] if len(tr) >= 3 else 1.0
+    atr60 = tr.rolling(60, min_periods=10).mean().iloc[-1] if len(tr) >= 10 else atr10
+    atr_contraction = atr10 / atr60 if atr60 > 0 else 1.0
+
+    vol_ma20 = v.rolling(20, min_periods=5).mean().iloc[-1] if len(v) >= 5 else 1.0
+    vol_ma60 = v.rolling(60, min_periods=10).mean().iloc[-1] if len(v) >= 10 else vol_ma20
+    rel_vol_20 = v.iloc[-1] / vol_ma20 if vol_ma20 > 0 else 1.0
+    rel_vol_60 = v.iloc[-1] / vol_ma60 if vol_ma60 > 0 else 1.0
+    min_vol_5d = v.tail(5).min() if len(v) >= 5 else v.iloc[-1]
+    vdu_ratio = min_vol_5d / vol_ma60 if vol_ma60 > 0 else 1.0
+
+    cur_p = float(c.iloc[-1])
+    high_60 = float(h.tail(60).max()) if len(h) >= 60 else float(h.max())
+    high_260 = float(h.tail(260).max()) if len(h) >= 260 else float(h.max())
+    low_260 = float(l.tail(260).min()) if len(l) >= 260 else float(l.min())
+
+    dist_high_60 = (high_60 - cur_p) / high_60 if high_60 > 0 else 0.0
+    dist_high_260 = (high_260 - cur_p) / high_260 if high_260 > 0 else 0.0
+    rise_from_low_260 = (cur_p - low_260) / low_260 if low_260 > 0 else 0.0
+
+    bias_20 = (cur_p - ma['ma20'].iloc[-1]) / ma['ma20'].iloc[-1] if ma['ma20'].iloc[-1] > 0 else 0.0
+    bias_60 = (cur_p - ma['ma60'].iloc[-1]) / ma['ma60'].iloc[-1] if ma['ma60'].iloc[-1] > 0 else 0.0
+    bias_260 = (cur_p - ma['ma260'].iloc[-1]) / ma['ma260'].iloc[-1] if ma['ma260'].iloc[-1] > 0 else 0.0
+
+    pct_chg = c.pct_change()
+    dist_days = int(((pct_chg <= -0.002) & (v > v.shift(1))).tail(20).sum())
+    open_p = float(df_daily['Open'].iloc[-1]) if 'Open' in df_daily.columns else cur_p
+
+    return {
+        "c": c, "v": v, "h": h, "l": l, "ma": ma, "w_ma": w_ma,
+        "slope_20": slope_20, "slope_60": slope_60, "slope_130": slope_130, "slope_260": slope_260,
+        "atr10": atr10, "atr60": atr60, "atr_contraction": atr_contraction,
+        "vol_ma20": vol_ma20, "vol_ma60": vol_ma60, "rel_vol_20": rel_vol_20, "rel_vol_60": rel_vol_60,
+        "min_vol_5d": min_vol_5d, "vdu_ratio": vdu_ratio,
+        "cur_p": cur_p, "high_60": high_60, "high_260": high_260, "low_260": low_260,
+        "dist_high_60": dist_high_60, "dist_high_260": dist_high_260, "rise_from_low_260": rise_from_low_260,
+        "bias_20": bias_20, "bias_60": bias_60, "bias_260": bias_260, "dist_days": dist_days,
+        "open_p": open_p
+    }
+
+def evaluate_dow_structure(df_d: pd.DataFrame) -> str:
+    if df_d is None or len(df_d) < 20: return "收斂/震盪"
+    recent_h = df_d['High'].tail(20).values
+    recent_l = df_d['Low'].tail(20).values
+    if recent_h[-1] >= np.max(recent_h) * 0.98 and recent_l[-1] > np.min(recent_l):
+        return "HH + HL"
+    elif recent_l[-1] <= np.min(recent_l) * 1.02 and recent_h[-1] < np.max(recent_h):
+        return "LH + LL"
+    return "收斂/震盪"
+
+def evaluate_state_machine(feat: dict, dow_structure: str, base_count: int = 1) -> dict:
+    cur_p, ma, w_ma, c_series = feat['cur_p'], feat['ma'], feat['w_ma'], feat['c']
+
+    # Step 2: 中斷態檢驗 (Correction Interrupt Check)
+    is_markdown = (
+        (len(c_series) >= 2 and c_series.iloc[-1] < ma['ma130'].iloc[-1] and c_series.iloc[-2] < ma['ma130'].iloc[-2] and
+         c_series.iloc[-1] < ma['ma260'].iloc[-1] and c_series.iloc[-2] < ma['ma260'].iloc[-2]) or
+        (ma['ma60'].iloc[-1] < ma['ma130'].iloc[-1] and feat['slope_60'] < 0) or
+        (dow_structure == "LH + LL")
+    )
+    if is_markdown:
+        return {"stage": "打底期 (Stage 1 Basing / Idle)", "substate": "結構走空 (Markdown)", "base_count": 0, "can_trade": False}
+
+    is_pullback = (
+        (cur_p <= ma['ma20'].iloc[-1] * 1.02 and cur_p >= ma['ma60'].iloc[-1]) and
+        (ma['ma20'].iloc[-1] > ma['ma60'].iloc[-1] > ma['ma130'].iloc[-1]) and
+        (feat['rel_vol_20'] < 0.7) and
+        (feat['dist_days'] < 4)
+    )
+    substate = "良性回檔修正 (Pullback)" if is_pullback else "無"
+
+    # Step 3: 五階段推進主鏈 (P1 -> P5)
+    # [P1 出貨期 (Distribution)]
+    candle_body_pct = (cur_p - feat['open_p']) / feat['open_p'] if feat['open_p'] > 0 else 0
+    p1_cond = (
+        (feat['dist_days'] >= 4) or
+        (feat['rel_vol_20'] >= 1.8 and candle_body_pct < 0.005) or
+        (cur_p < ma['ma20'].iloc[-1] and ma['ma5'].iloc[-1] < ma['ma20'].iloc[-1])
+    )
+    if p1_cond:
+        return {"stage": "出貨期 (Distribution)", "substate": substate, "base_count": base_count}
+
+    # [P2 末升段 (Stage 3 Climax)]
+    ret_10d = (cur_p - c_series.iloc[-11]) / c_series.iloc[-11] if len(c_series) >= 11 else 0
+    p2_cond = (
+        (cur_p / ma['ma60'].iloc[-1] > 1.25 or cur_p / ma['ma260'].iloc[-1] > 1.60) or
+        (ret_10d > 0.30 and cur_p / ma['ma20'].iloc[-1] > 1.15)
+    )
+    if p2_cond:
+        return {"stage": "末升段 (Stage 3 Climax)", "substate": substate, "base_count": base_count}
+
+    # [P3 主升段 (Stage 2B Trend)]
+    p3_cond = (
+        (cur_p > ma['ma20'].iloc[-1] > ma['ma60'].iloc[-1] > ma['ma130'].iloc[-1] > ma['ma260'].iloc[-1]) and
+        (feat['slope_20'] > 0 and feat['slope_60'] > 0 and feat['slope_130'] > 0) and
+        (w_ma['wma4'].iloc[-1] > w_ma['wma12'].iloc[-1] > w_ma['wma26'].iloc[-1] > w_ma['wma52'].iloc[-1]) and
+        (feat['rise_from_low_260'] >= 0.30 and feat['dist_high_260'] <= 0.15) and
+        (dow_structure == "HH + HL")
+    )
+    if p3_cond:
+        return {"stage": "主升段 (Stage 2B Trend)", "substate": substate, "base_count": base_count}
+
+    # [P4 初升段 (Stage 2A Breakout)]
+    bull_k_body = (cur_p - feat['open_p']) / feat['open_p'] if feat['open_p'] > 0 else 0
+    p4_cond = (
+        (cur_p >= feat['high_60'] * 0.99 and bull_k_body >= 0.03) and
+        (feat['rel_vol_20'] >= 1.5 or feat['rel_vol_60'] >= 2.0) and
+        (cur_p > ma['ma5'].iloc[-1] > ma['ma20'].iloc[-1] > ma['ma60'].iloc[-1]) and
+        (feat['slope_20'] > 0 and feat['slope_60'] > 0)
+    )
+    if p4_cond:
+        return {"stage": "初升段 (Stage 2A Breakout)", "substate": substate, "base_count": max(1, base_count)}
+
+    # [P5 醞釀期 (Incubation / VCP)]
+    ma_conv = abs(ma['ma20'].iloc[-1] - ma['ma60'].iloc[-1]) / ma['ma60'].iloc[-1] if ma['ma60'].iloc[-1] > 0 else 1.0
+    p5_cond = (
+        (cur_p > ma['ma60'].iloc[-1] and cur_p > ma['ma130'].iloc[-1]) and
+        (feat['slope_130'] >= 0 and feat['slope_260'] >= -0.002) and
+        (ma_conv < 0.03) and
+        (feat['vdu_ratio'] <= 0.5) and
+        (feat['atr_contraction'] < 0.65 and feat['dist_high_60'] < 0.05)
+    )
+    if p5_cond:
+        return {"stage": "醞釀期 (Incubation / VCP)", "substate": substate, "base_count": base_count}
+
+    # Step 4: 基底兜底態 (Fallback: Basing)
+    return {"stage": "打底期 (Stage 1 Basing / Idle)", "substate": substate, "base_count": base_count}
+
+def map_theme_to_stocks(theme_prompt: str, client: genai.Client, model_name="gemini-2.5-flash") -> list:
+    prompt = f"""
+    你是一名精通台股上市櫃產業供應鏈的資深研究員。
+    請分析使用者給定的題材或問題：「{theme_prompt}」
+    列出最直接受惠、具代表性的台灣上市/上櫃個股（最多 8~10 檔）。
+
+    請嚴格返回 JSON Array 格式，不要有額外的 Markdown 說明：
+    [
+      {{
+        "symbol": "3450",
+        "name": "聯鈞",
+        "market": "TW",
+        "relevance": "核心受惠 (高純度)",
+        "business_role": "矽光子雷射雷射模組封裝，受惠資料中心升級"
+      }}
+    ]
+    """
+    try:
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config={"response_mime_type": "application/json"}
+        )
+        return json.loads(response.text)
+    except Exception as e:
+        st.error(f"題材映射失敗: {e}")
+        return []
+
+def render_transition_status_cards():
+    conn = _get_gsheet_conn()
+    if not conn: return
+    try: df = conn.read(worksheet="watchlist", ttl=0)
+    except Exception: return
+    if df is None or df.empty or "stage" not in df.columns or "prev_stage" not in df.columns: return
+
+    is_active_col = df["is_active"].astype(str).str.lower() == "true"
+    stage_changed = (df["stage"].astype(str) != df["prev_stage"].astype(str)) & df["prev_stage"].notna() & (df["prev_stage"].astype(str) != "")
+    alerts = df[is_active_col & stage_changed].copy()
+    if alerts.empty: return
+
+    critical_items, climax_items, breakout_items = [], [], []
+    for _, row in alerts.iterrows():
+        info = {
+            "symbol": str(row.get("symbol", "")), "name": str(row.get("name", "")),
+            "prev": str(row.get("prev_stage", "未知")), "cur": str(row.get("stage", "未知")),
+            "date": str(row.get("transition_date", "")), "substate": str(row.get("substate", "無"))
+        }
+        c_stg, sub = info["cur"], info["substate"]
+        if "出貨" in c_stg or "走空" in sub or "Markdown" in sub: critical_items.append(info)
+        elif "末升" in c_stg: climax_items.append(info)
+        elif "初升" in c_stg or "主升" in c_stg: breakout_items.append(info)
+
+    if critical_items:
+        card_c = "\n".join([f"- **{it['name']} ({it['symbol']})**：由 `{it['prev']}` ➔ **{it['cur']}**（子狀態: `{it['substate']}`，躍遷日: {it['date']}）  \n  ↳ **策略防禦：嚴禁買進，持股啟動強制停損/出清！**" for it in critical_items])
+        st.error(f"🚨 **【危險防守・結構破壞/出貨告警】**\n\n{card_c}")
+    if climax_items:
+        card_c = "\n".join([f"- **{it['name']} ({it['symbol']})**：由 `{it['prev']}` ➔ **{it['cur']}**（躍遷日: {it['date']}）  \n  ↳ **策略執行：禁止追高，啟動 5MA 緊縮移動停利！**" for it in climax_items])
+        st.warning(f"⚠️ **【高檔過熱・末升段噴出告警】**\n\n{card_c}")
+    if breakout_items:
+        card_c = "\n".join([f"- **{it['name']} ({it['symbol']})**：由 `{it['prev']}` ➔ **{it['cur']}**（躍遷日: {it['date']}）  \n  ↳ **策略執行：完成底部整理，觸發第 1 批 50% 資金進場！**" for it in breakout_items])
+        st.success(f"🎯 **【動能發動・初升段突破確認】**\n\n{card_c}")
+
+# ==========================================
 # 介面渲染
 # ==========================================
 market_rankings, db_status = load_market_data()
 st.title("🚀 台股儀表板")
+
+# 渲染狀態躍遷即時字卡
+render_transition_status_cards()
 
 with st.expander("🛡️ 說明", expanded=False):
     st.markdown("**RS_ratio 雙軸指標**：以 60 日季線為強弱中軸（≥100 為 🔥[強勢]，<100 為 ❄️[弱勢]）；以 20 日 SMA 為短線動能加速度。")
@@ -328,7 +626,7 @@ with st.expander("🛡️ 說明", expanded=False):
 if market_rankings: st.info(f"🟢 **全市場 RS 資料庫已就緒** ｜ 收錄 **{len(market_rankings)}** 檔台股 ｜ 狀態：{db_status}")
 else: st.warning("🟡 正在等待全市場 RS 排名資料載入...")
 
-tab_portfolio, tab_leaderboard, tab_market_breadth, tab_ai = st.tabs(["📈 獲利監控系統", "🏆 個股查詢", "📊 大盤", "🤖 Gemini 智能助理"])
+tab_portfolio, tab_leaderboard, tab_theme, tab_market_breadth, tab_ai = st.tabs(["📈 獲利監控系統", "🏆 個股查詢", "🎯 題材診斷與追蹤", "📊 大盤", "🤖 Gemini 智能助理"])
 portfolio_live_summary = []
 
 with tab_portfolio:
@@ -579,12 +877,157 @@ with tab_leaderboard:
                 st.rerun()
     else: st.info("尚無排名資料。")
 
+# ==========================================
+# 分頁：🎯 題材診斷與追蹤 (Watchlist 管理)
+# ==========================================
+with tab_theme:
+    st.subheader("🎯 題材映射與客觀生命週期判定")
+    
+    col_in, col_btn = st.columns([4, 1])
+    user_theme = col_in.text_input("輸入題材、產業關鍵字或個股需求", placeholder="例如：矽光子 CPO、低軌衛星、機器人軸承", key="theme_input_query")
+    
+    if col_btn.button("🔍 探索題材標的", use_container_width=True) and user_theme:
+        api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
+        target_model = st.secrets.get("GEMINI_MODEL", "gemini-2.5-flash")
+        if not api_key:
+            st.error("⚠️ 請先在 secrets 中設定 `GEMINI_API_KEY`。")
+        else:
+            client = genai.Client(api_key=api_key)
+            with st.spinner("AI 正在解析產業鏈與對應台股標的..."):
+                candidates = map_theme_to_stocks(user_theme, client, target_model)
+                st.session_state["theme_candidates"] = candidates
+                st.session_state["active_theme_name"] = user_theme
+
+    if st.session_state.get("theme_candidates"):
+        st.markdown(f"##### 📋 題材「**{st.session_state.get('active_theme_name')}**」映射標的（請勾選欲分析個股）：")
+        candidates_df = pd.DataFrame(st.session_state["theme_candidates"])
+        if "選取" not in candidates_df.columns:
+            candidates_df.insert(0, "選取", True)
+        
+        edited_df = st.data_editor(
+            candidates_df,
+            column_config={
+                "選取": st.column_config.CheckboxColumn("分析", default=True),
+                "symbol": st.column_config.TextColumn("代號", width=80),
+                "name": st.column_config.TextColumn("名稱", width=100),
+                "market": st.column_config.TextColumn("市場", width=70),
+                "relevance": st.column_config.TextColumn("題材純度", width=140),
+                "business_role": st.column_config.TextColumn("受惠主因 / 產品定位", width=320),
+            },
+            disabled=["symbol", "name", "market", "relevance", "business_role"],
+            hide_index=True,
+            use_container_width=True,
+            key="candidate_editor"
+        )
+        
+        selected_stocks = edited_df[edited_df["選取"] == True].to_dict("records")
+        
+        if st.button("🚀 開始量化運算與階段診斷", type="primary", use_container_width=True):
+            if not selected_stocks:
+                st.warning("請至少勾選一檔股票進行分析。")
+            else:
+                progress_bar = st.progress(0)
+                results = []
+                for i, stk in enumerate(selected_stocks):
+                    sym = clean_sym(stk.get("symbol", ""))
+                    mkt = str(stk.get("market", "TW")).upper()
+                    ticker_str = f"{sym}.TWO" if "TWO" in mkt or "上櫃" in mkt else f"{sym}.TW"
+                    
+                    df_d = yf.Ticker(ticker_str).history(period="14mo")
+                    if df_d.empty:
+                        alt_str = f"{sym}.TW" if "TWO" in ticker_str else f"{sym}.TWO"
+                        df_d = yf.Ticker(alt_str).history(period="14mo")
+                    
+                    if not df_d.empty and len(df_d) >= 60:
+                        df_w = df_d.resample('W-FRI').agg({
+                            'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
+                        }).dropna()
+                        
+                        feat = calculate_technical_features(df_d, df_w)
+                        dow = evaluate_dow_structure(df_d)
+                        eval_res = evaluate_state_machine(feat, dow, base_count=1)
+                        stage_name = eval_res["stage"]
+                        strat = STRATEGY_TEMPLATES.get(stage_name, STRATEGY_TEMPLATES["打底期 (Stage 1 Basing / Idle)"])
+                        
+                        results.append({"stock": stk, "feat": feat, "eval": eval_res, "strategy": strat})
+                    progress_bar.progress((i + 1) / len(selected_stocks))
+                
+                st.session_state["theme_results"] = results
+
+        if st.session_state.get("theme_results"):
+            st.divider()
+            st.subheader("📊 量化階段診斷與分批執行建議")
+            for r in st.session_state["theme_results"]:
+                stk, feat, ev, strat = r["stock"], r["feat"], r["eval"], r["strategy"]
+                cur_p = feat["cur_p"]
+                sym_clean = clean_sym(stk["symbol"])
+                stock_title = f"📌 {stk['name']} ({sym_clean}) ｜ 生命週期：【{ev['stage']}】 ｜ {ev['substate']}"
+                
+                with st.expander(stock_title, expanded=True):
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric("當前市價", f"${cur_p:.2f}")
+                    c2.metric("20MA 乖離率", f"{feat['bias_20']*100:+.1f}%")
+                    c3.metric("ATR 收縮比 (10/60)", f"{feat['atr_contraction']:.2f}", "🔥 波動收縮" if feat['atr_contraction'] < 0.65 else "正常")
+                    c4.metric("相對均量比 (20MV)", f"{feat['rel_vol_20']:.2f} 倍")
+                    
+                    st.markdown(f"""
+                    **【標準量化輸出報告】**
+                    - **當前判定狀態**：`{ev['stage']}`
+                    - **狀態附加屬性**：Base 計數：`Base {ev['base_count']}` ｜ 中斷態標籤：`{ev['substate']}`
+                    - **關鍵量化證據**：
+                      - 均線坐標：現價=${cur_p:.2f} ｜ 20MA=${feat['ma']['ma20'].iloc[-1]:.2f} ｜ 60MA=${feat['ma']['ma60'].iloc[-1]:.2f} ｜ 260MA=${feat['ma']['ma260'].iloc[-1]:.2f}
+                      - 滾動位階：距 260日高點 `{feat['dist_high_260']*100:.1f}%` ｜ 距 260日低點漲幅 `{feat['rise_from_low_260']*100:.1f}%`
+                      - 量能收縮：近 5 日最低量與 60MV 比值 `{feat['vdu_ratio']:.2f}`（窒息量臨界 <= 0.5）
+                    - **對應策略配置**：
+                      - **建議分批**：`{strat['tranches']} 批`（資金比例：`{strat['ratios']}`）
+                      - **執行原則**：{strat['rule']}
+                      - **初始停損防守位**：{strat['stop_loss_type']}
+                    """)
+                    
+                    btn_c1, _ = st.columns([3, 7])
+                    if btn_c1.button(f"📥 追蹤 {stk['name']} ({sym_clean})", key=f"track_btn_{sym_clean}"):
+                        rec = {
+                            "symbol": sym_clean,
+                            "name": stk["name"],
+                            "theme": st.session_state.get("active_theme_name", "自訂"),
+                            "created_date": get_tw_now_str("%Y-%m-%d"),
+                            "stage": ev["stage"],
+                            "prev_stage": "",
+                            "substate": ev["substate"],
+                            "base_count": ev["base_count"],
+                            "pivot_price": round(feat["high_60"], 2),
+                            "strategy_tranches": json.dumps(strat, ensure_ascii=False),
+                            "transition_date": get_tw_now_str("%Y-%m-%d"),
+                            "is_active": True
+                        }
+                        if save_to_watchlist(rec):
+                            st.success(f"已成功將 {stk['name']} 加入 Google Sheets Watchlist 持續追蹤！")
+                            st.rerun()
+
+    st.divider()
+    st.subheader("👁️ 持久化題材追蹤名單 (Watchlist)")
+    watchlist = load_watchlist()
+    if not watchlist:
+        st.info("目前無追蹤中的觀察標的。請由上方探索題材並點擊「📥 追蹤」加入。")
+    else:
+        df_watch = pd.DataFrame(watchlist)
+        for idx, row in df_watch.iterrows():
+            sym_w, name_w = str(row.get("symbol", "")), str(row.get("name", ""))
+            wc1, wc2, wc3, wc4, wc5 = st.columns([2, 2, 2, 3, 1])
+            wc1.write(f"**{name_w} ({sym_w})**")
+            wc2.write(f"題材：`{row.get('theme', '-')}`")
+            wc3.write(f"階段：`{row.get('stage', '-')}`")
+            wc4.write(f"追蹤起始：{row.get('created_date', '-')}")
+            if wc5.button("🗑️ 剔除", key=f"del_wl_{sym_w}_{idx}"):
+                if remove_from_watchlist(sym_w):
+                    st.success(f"已剔除 {name_w} ({sym_w})")
+                    st.rerun()
+
 latest_breadth_dict = {}
 
 with tab_market_breadth:
     st.subheader("📊 大盤指標")
 
-    # 順勢操作模式切換指標說明字卡（可折疊）
     with st.expander("📖 說明：順勢操作模式切換指標與判斷準則", expanded=False):
         st.markdown("""
         本分頁依據台股月週期（20日）與季週期（60日）量化市場動能環境，作為切換**「主升段波段進攻」**與**「震盪弱勢防守」**的客觀依據：
@@ -607,8 +1050,8 @@ with tab_market_breadth:
         | **季均廣度 ($MAB_{60}$)** | **$> 50\%$** | **$35\% \sim 50\%$** | **$< 35\%$** |
         | **領頭羊動能 (Top 10% RS)**| **站穩 20MA** 且持續創高 | 於 20MA 附近來回洗盤 | **帶量摜破 20MA** (領先族群補跌) |
         | **新高差額 ($NNH_{60}$)** | 穩定為正（**$> +30$ 家**） | 接近 0 軸（**$-20 \sim +20$ 家**） | 明顯翻負（**$< -30$ 家**） |
-        | **突破延續度 ($BFTR_{20}$)**| **$\ge 60\%$**（突破推進順暢）| **$40\% \sim 60\%$**（頻繁橫盤洗盤）| **$< 40\%$**（突破即長黑誘多） |
-        | **出貨日計數 ($DDC_{20}$)**| **$\le 2$ 次**（無密集拋售） | **$3 \sim 4$ 次**（主力派發警戒） | **$\ge 5$ 次**（機構集中出貨） |
+        | **突破延續度 ($BFTR_{20}$)**| **$\\ge 60\%$**（突破推進順暢）| **$40\% \sim 60\%$**（頻繁橫盤洗盤）| **$< 40\%$**（突破即長黑誘多） |
+        | **出貨日計數 ($DDC_{20}$)**| **$\\le 2$ 次**（無密集拋售） | **$3 \sim 4$ 次**（主力派發警戒） | **$\\ge 5$ 次**（機構集中出貨） |
         | **建議總持股曝險** | **80% ~ 100%** | **30% ~ 40%** | **0% ~ 10%（保留現金）** |
         | **停利戰術設定** | 追求波段：未實現達 **20%+** 或月線正乖離 **30%** 移動停利 | 短線兌現：達 **6%~9%** 先出半數，持股 **3天不動時間停損** | 停止追買，嚴格執行損益兩平保本或停損砍倉 |
         """)
@@ -627,7 +1070,6 @@ with tab_market_breadth:
         latest, prev = plot_df.iloc[-1], plot_df.iloc[-2] if len(plot_df) >= 2 else plot_df.iloc[-1]
         latest_breadth_dict = latest.to_dict()
 
-        # 即時狀態指示判斷
         is_green = (latest["above_20ma"] >= 60 and latest["bftr_20"] >= 60 and latest["ddc_20"] <= 2 and latest["leader_dist_ma20"] >= 0)
         is_red = (latest["above_20ma"] < 40 or latest["ddc_20"] >= 5 or latest["bftr_20"] < 40 or latest["leader_dist_ma20"] < -3.0)
 
