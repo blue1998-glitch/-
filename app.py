@@ -14,6 +14,15 @@ get_tw_now_str = lambda fmt="%Y-%m-%d %H:%M:%S": get_tw_now().strftime(fmt)
 for k, v in [("last_portfolio_refresh", get_tw_now_str()), ("search_input_val", ""), ("chat_history", [])]:
     st.session_state.setdefault(k, v)
 
+def _get_secret(key, default=None):
+    """統一讀取密鑰：優先讀取 st.secrets，其次讀取環境變數，兩者皆無則回傳 default。
+    對 st.secrets 的存取包了例外保護，避免在未設定 secrets.toml 的環境中直接噴錯。"""
+    try:
+        val = st.secrets.get(key)
+        if val: return val
+    except Exception: pass
+    return os.getenv(key, default)
+
 def _load_names():
     try:
         if os.path.exists("stock_names.json"):
@@ -143,7 +152,8 @@ def load_data():
 def save_data(data):
     try:
         with open(DATA_FILE, "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception: pass
+    except Exception as e:
+        st.sidebar.warning(f"⚠️ 本機檔案存檔失敗，這次異動可能未保存: {e}")
     conn = _get_gsheet_conn()
     if conn:
         try:
@@ -184,21 +194,32 @@ def load_market_data():
         except Exception as e: return [], f"連線異常: {str(e)}"
 
     bm_dict = get_benchmark_returns()
+    valid_list = []
     for item in raw_list:
-        item["symbol"], item["name"] = clean_sym(item.get("symbol", "")), clean_stock_name(item.get("name"), item.get("symbol"))
-        mkt_key = "TWO" if "上櫃" in str(item.get("market", "")) or "TWO" in str(item.get("market", "")).upper() else "TW"
-        bm_info = bm_dict.get(mkt_key, bm_dict["TW"])
-        bm_r60, bm_r20 = bm_info.get("r_60d", 0.0), bm_info.get("r_20d", 0.0)
-        s_r60, s_r20 = float(item.get("r_60d", 0.0) or 0.0), float(item.get("r_20d", 0.0) or 0.0)
-        if "rs_ratio" not in item or item["rs_ratio"] in (100.0, None):
-            item["rs_ratio"] = round(100.0 * (1.0 + s_r60 / 100.0) / max(0.01, (1.0 + bm_r60 / 100.0)), 2)
-        if "rs_momentum" not in item or item["rs_momentum"] in (100.0, None):
-            item["rs_momentum"] = round(100.0 * (1.0 + s_r20 / 100.0) / max(0.01, (1.0 + bm_r20 / 100.0)), 2)
-    return raw_list, status_msg
+        # 防禦性驗證：本機檔案或 GitHub 遠端 JSON 若含格式錯誤的單筆資料，
+        # 僅跳過該筆，不讓整個大盤資料庫（進而整個 App）崩潰。
+        if not isinstance(item, dict): continue
+        try:
+            item["symbol"] = clean_sym(item.get("symbol", ""))
+            if not item["symbol"]: continue
+            item["name"] = clean_stock_name(item.get("name"), item["symbol"])
+            mkt_key = "TWO" if is_otc_market(item.get("market", "")) else "TW"
+            bm_info = bm_dict.get(mkt_key, bm_dict["TW"])
+            bm_r60, bm_r20 = bm_info.get("r_60d", 0.0), bm_info.get("r_20d", 0.0)
+            s_r60, s_r20 = float(item.get("r_60d", 0.0) or 0.0), float(item.get("r_20d", 0.0) or 0.0)
+            if "rs_ratio" not in item or item["rs_ratio"] in (100.0, None):
+                item["rs_ratio"] = round(100.0 * (1.0 + s_r60 / 100.0) / max(0.01, (1.0 + bm_r60 / 100.0)), 2)
+            if "rs_momentum" not in item or item["rs_momentum"] in (100.0, None):
+                item["rs_momentum"] = round(100.0 * (1.0 + s_r20 / 100.0) / max(0.01, (1.0 + bm_r20 / 100.0)), 2)
+            valid_list.append(item)
+        except Exception:
+            continue
+    return valid_list, status_msg
 
+@st.cache_data(ttl=60)
 def fetch_stock_and_momentum(symbol, market, entry_date_str=None):
     sym_clean = clean_sym(symbol)
-    is_otc = "TWO" in str(market).upper() or "上櫃" in str(market)
+    is_otc = is_otc_market(market)
     ticker, alt_ticker, bm_key = f"{sym_clean}.TWO" if is_otc else f"{sym_clean}.TW", f"{sym_clean}.TW" if is_otc else f"{sym_clean}.TWO", "TWO" if is_otc else "TW"
     try:
         df_all = yf.Ticker(ticker).history(period="1y")
@@ -235,7 +256,7 @@ def calc_pnl(shares, avg_cost, current_price, discount):
 
 @st.cache_data(ttl=3600)
 def compute_market_breadth_data(market_list, mkt_filter="TW"):
-    filtered = [f"{clean_sym(it.get('symbol','')).upper()}.{'TWO' if '上櫃' in str(it.get('market','')) or 'TWO' in str(it.get('market','')).upper() else 'TW'}" for it in market_list if mkt_filter in ("ALL", "TWO" if "上櫃" in str(it.get("market","")) or "TWO" in str(it.get("market","")).upper() else "TW") and clean_sym(it.get("symbol",""))]
+    filtered = [f"{clean_sym(it.get('symbol','')).upper()}.{'TWO' if is_otc_market(it.get('market','')) else 'TW'}" for it in market_list if mkt_filter in ("ALL", "TWO" if is_otc_market(it.get("market","")) else "TW") and clean_sym(it.get("symbol",""))]
     if not filtered: return None
     try:
         bm_hist = yf.Ticker("^TWII" if mkt_filter == "TW" else "^TWOII").history(period="1y")
@@ -351,17 +372,25 @@ STRATEGY_TEMPLATES = {
     }
 }
 
-def load_watchlist():
+@st.cache_data(ttl=5)
+def _read_watchlist_df():
+    """統一讀取 watchlist 工作表並短暫快取（5秒），讓同一次執行中的多處呼叫共用同一次讀取結果，
+    減少對 Google Sheets 的重複請求。寫入後會呼叫 .clear() 主動清快取，故不影響即時性。"""
     conn = _get_gsheet_conn()
-    if conn:
-        try:
-            df = conn.read(worksheet="watchlist", ttl=0)
-            if df is not None and not df.empty:
-                for c in WATCHLIST_COLS:
-                    if c not in df.columns: df[c] = ""
-                active_mask = df["is_active"].astype(str).str.lower() == "true"
-                return df[active_mask].to_dict("records")
-        except Exception: pass
+    if not conn: return None
+    return conn.read(worksheet="watchlist", ttl=0)
+
+def load_watchlist():
+    try:
+        df = _read_watchlist_df()
+    except Exception as e:
+        st.sidebar.warning(f"Watchlist 讀取異常: {e}")
+        return []
+    if df is not None and not df.empty:
+        for c in WATCHLIST_COLS:
+            if c not in df.columns: df[c] = ""
+        active_mask = df["is_active"].astype(str).str.lower() == "true"
+        return df[active_mask].to_dict("records")
     return []
 
 def save_to_watchlist(record):
@@ -387,6 +416,7 @@ def save_to_watchlist(record):
                 record.setdefault("transition_date", get_tw_now_str("%Y-%m-%d"))
                 df = pd.concat([df, pd.DataFrame([record])], ignore_index=True)
             conn.update(worksheet="watchlist", data=df)
+            _read_watchlist_df.clear()
             return True
         except Exception as e:
             st.error(f"Watchlist 寫入失敗: {e}")
@@ -401,6 +431,7 @@ def remove_from_watchlist(sym):
                 df["symbol"] = df["symbol"].astype(str).str.strip()
                 df = df[df["symbol"] != str(sym).strip()]
                 conn.update(worksheet="watchlist", data=df)
+                _read_watchlist_df.clear()
                 return True
         except Exception as e:
             st.error(f"剔除失敗: {e}")
@@ -546,7 +577,7 @@ def evaluate_state_machine(feat: dict, dow_structure: str, base_count: int = 1) 
     # Step 4: 基底兜底態 (Fallback: Basing)
     return {"stage": "打底期 (Stage 1 Basing / Idle)", "substate": substate, "base_count": base_count}
 
-def map_theme_to_stocks(theme_prompt: str, client: genai.Client, model_name="gemini-2.5-flash") -> list:
+def map_theme_to_stocks(theme_prompt: str, client: genai.Client, model_name="gemini-2.5-flash", known_symbols=None) -> list:
     prompt = f"""
     你是一名精通台股上市櫃產業供應鏈的資深研究員。
     請分析使用者給定的題材或問題：「{theme_prompt}」
@@ -569,16 +600,20 @@ def map_theme_to_stocks(theme_prompt: str, client: genai.Client, model_name="gem
             contents=prompt,
             config={"response_mime_type": "application/json"}
         )
-        return json.loads(response.text)
+        results = json.loads(response.text)
+        if known_symbols:
+            for r in results:
+                r["db_verified"] = clean_sym(r.get("symbol", "")).upper() in known_symbols
+        return results
     except Exception as e:
         st.error(f"題材映射失敗: {e}")
         return []
 
 def render_transition_status_cards():
-    conn = _get_gsheet_conn()
-    if not conn: return
-    try: df = conn.read(worksheet="watchlist", ttl=0)
-    except Exception: return
+    try:
+        df = _read_watchlist_df()
+    except Exception:
+        return
     if df is None or df.empty or "stage" not in df.columns or "prev_stage" not in df.columns: return
 
     is_active_col = df["is_active"].astype(str).str.lower() == "true"
@@ -672,6 +707,7 @@ with tab_portfolio:
             st.session_state.last_portfolio_refresh = get_tw_now_str()
             st.rerun()
         st.caption(f"🕒 最新市價更新時間：{st.session_state.last_portfolio_refresh}")
+        summary_slot = st.container()
 
         for idx, item in enumerate(portfolio):
             sym, name, mkt, entry_d = clean_sym(item["symbol"]), clean_stock_name(item.get("name", ""), item.get("symbol")), item["market"], item["entry_date"]
@@ -717,8 +753,8 @@ with tab_portfolio:
 
             portfolio_live_summary.append({
                 "股票": f"{name} ({sym})", "持股數": shares, "成本價": avg_cost, "現價": cur_price,
-                "未實現損益": net_pnl, "報酬率%": roi, "RS評分": rs_score, "RS_ratio": rs_ratio_val,
-                "狀態": status_text, "持有天數": days_held
+                "市值": round(shares * cur_price), "未實現損益": net_pnl, "報酬率%": roi,
+                "RS評分": rs_score, "RS_ratio": rs_ratio_val, "狀態": status_text, "持有天數": days_held
             })
 
             with st.container():
@@ -737,22 +773,24 @@ with tab_portfolio:
 
                 with st.expander(f"⚙️ 操作 {name}（加碼 / 減碼 / 結清）"):
                     st.write("##### 🔼 順勢加碼")
-                    add_p = st.number_input("加碼價格", min_value=0.1, step=0.1, value=cur_price, key=f"add_p_{idx}")
-                    add_s = st.number_input("加碼股數", min_value=1, step=100, value=1000, key=f"add_s_{idx}")
+                    add_p = st.number_input("加碼價格", min_value=0.1, step=0.1, value=cur_price, key=f"add_p_{sym}_{idx}")
+                    add_s = st.number_input("加碼股數", min_value=1, step=100, value=1000, key=f"add_s_{sym}_{idx}")
                     new_tot = shares + int(add_s)
                     sim_avg = round(((shares * avg_cost) + (int(add_s) * add_p)) / new_tot, 2)
                     buf = round(((cur_price - sim_avg) / cur_price) * 100, 1)
                     st.caption(f"試算新均價：**${sim_avg}** ｜ 安全緩衝：**{buf:+}%**")
-                    if st.button("確認加碼", key=f"btn_add_{idx}", use_container_width=True):
+                    confirm_add = st.checkbox("我已確認以上加碼價格與股數無誤", key=f"confirm_add_{sym}_{idx}")
+                    if st.button("確認加碼", key=f"btn_add_{sym}_{idx}", use_container_width=True, disabled=not confirm_add):
                         portfolio[idx].setdefault("history", []).append(make_log_entry("🔼 順勢加碼", add_p, f"+{int(add_s)}", new_tot, "-", f"新均價 ${sim_avg} (緩衝 {buf:+}%)"))
                         portfolio[idx]["shares"], portfolio[idx]["avg_cost"], portfolio[idx]["status_override"] = new_tot, sim_avg, ""
+                        st.session_state[f"confirm_add_{sym}_{idx}"] = False
                         save_data(portfolio)
                         st.rerun()
 
                     st.divider()
                     st.write("##### 🔽 分批減碼")
-                    red_p = st.number_input("減碼價格", min_value=0.1, step=0.1, value=cur_price, key=f"red_p_{idx}")
-                    red_s = st.number_input("減碼股數", min_value=1, max_value=shares, step=100, value=min(1000, shares), key=f"red_s_{idx}")
+                    red_p = st.number_input("減碼價格", min_value=0.1, step=0.1, value=cur_price, key=f"red_p_{sym}_{idx}")
+                    red_s = st.number_input("減碼股數", min_value=1, max_value=shares, step=100, value=min(1000, shares), key=f"red_s_{sym}_{idx}")
                     
                     default_reason_idx = 0
                     if "高點回檔" in status_text: default_reason_idx = 1
@@ -761,11 +799,12 @@ with tab_portfolio:
                     elif "停損" in status_text or "保本" in status_text: default_reason_idx = 4
                     
                     risk_reasons = ["🎯 自行主動調節", "🟣 高點回檔停利", "🟠 月線正乖離過熱", "⏳ 時間停損換股", "🔴 保本/停損觸發", "📦 其他策略調節"]
-                    selected_reason = st.selectbox("減碼風控原因", risk_reasons, index=default_reason_idx, key=f"risk_reason_{idx}")
+                    selected_reason = st.selectbox("減碼風控原因", risk_reasons, index=default_reason_idx, key=f"risk_reason_{sym}_{idx}")
 
                     sim_red_pnl, sim_red_roi, _ = calc_pnl(int(red_s), avg_cost, red_p, discount_display)
                     st.caption(f"試算本次損益：**{sim_red_pnl:+,} 元** ({sim_red_roi:+}%)")
-                    if st.button("確認減碼", key=f"btn_red_{idx}", use_container_width=True):
+                    confirm_red = st.checkbox("我已確認以上減碼價格與股數無誤", key=f"confirm_red_{sym}_{idx}")
+                    if st.button("確認減碼", key=f"btn_red_{sym}_{idx}", use_container_width=True, disabled=not confirm_red):
                         new_shares = shares - int(red_s)
                         note_text = f"【{selected_reason}】報酬率 {sim_red_roi:+}%"
                         portfolio[idx].setdefault("history", []).append(make_log_entry("🔽 分批減碼", red_p, f"-{int(red_s)}", new_shares, f"{sim_red_pnl:+,} 元", note_text))
@@ -773,20 +812,62 @@ with tab_portfolio:
                             portfolio[idx]["shares"] = new_shares
                             portfolio[idx]["realized_pnl"] = item.get("realized_pnl", 0.0) + sim_red_pnl
                             portfolio[idx]["status_override"] = "持股續抱中"
+                            st.session_state[f"confirm_red_{sym}_{idx}"] = False
                         else:
                             portfolio.pop(idx)
                         save_data(portfolio)
                         st.rerun()
 
                     st.divider()
-                    if st.button("🗑️ 結清出場", key=f"del_{idx}", use_container_width=True):
+                    st.caption("⚠️ 結清出場會直接整筆刪除此持股（含歷史交易紀錄），無法復原。")
+                    confirm_close = st.checkbox("我已確認要結清出場此持股", key=f"confirm_close_{sym}_{idx}")
+                    if st.button("🗑️ 結清出場", key=f"del_{sym}_{idx}", use_container_width=True, disabled=not confirm_close):
                         portfolio.pop(idx)
                         save_data(portfolio)
+                        st.rerun()
+
+                with st.expander(f"✏️ 編輯 {name} 資料（更正輸入錯誤，不會產生交易紀錄）"):
+                    ec1, ec2 = st.columns(2)
+                    edit_name = ec1.text_input("股票名稱", value=name, key=f"edit_name_{sym}_{idx}")
+                    edit_mkt = ec1.selectbox("市場別", ["TWO (上櫃)", "TW (上市)"], index=0 if mkt == "TWO" else 1, key=f"edit_mkt_{sym}_{idx}")
+                    edit_cost = ec2.number_input("成本均價", min_value=0.01, step=0.1, value=float(avg_cost), key=f"edit_cost_{sym}_{idx}")
+                    try: default_entry_date = datetime.strptime(entry_d, "%Y-%m-%d").date()
+                    except Exception: default_entry_date = get_tw_now().date()
+                    edit_date = ec2.date_input("進場日期", value=default_entry_date, key=f"edit_date_{sym}_{idx}")
+                    confirm_edit = st.checkbox("我已確認以上修正資料無誤", key=f"confirm_edit_{sym}_{idx}")
+                    if st.button("💾 儲存修正", key=f"btn_edit_{sym}_{idx}", use_container_width=True, disabled=not confirm_edit):
+                        portfolio[idx]["name"] = clean_stock_name(edit_name.strip(), sym) if edit_name.strip() else name
+                        portfolio[idx]["market"] = "TWO" if "TWO" in edit_mkt else "TW"
+                        portfolio[idx]["avg_cost"] = float(edit_cost)
+                        portfolio[idx]["entry_date"] = str(edit_date)
+                        st.session_state[f"confirm_edit_{sym}_{idx}"] = False
+                        save_data(portfolio)
+                        st.success("已更新持股資料")
                         st.rerun()
 
                 if history_logs:
                     with st.expander(f"📜 {name} 交易歷程", expanded=False):
                         st.dataframe(pd.DataFrame(history_logs), use_container_width=True, hide_index=True)
+
+        if portfolio_live_summary:
+            with summary_slot:
+                st.subheader("📊 總曝險與風險總覽")
+                df_sum = pd.DataFrame(portfolio_live_summary)
+                total_mv = df_sum["市值"].sum()
+                total_cost = (df_sum["持股數"] * df_sum["成本價"]).sum()
+                total_pnl = df_sum["未實現損益"].sum()
+                total_roi = round((total_pnl / total_cost) * 100, 2) if total_cost > 0 else 0.0
+                m1, m2, m3 = st.columns(3)
+                m1.metric("總市值", f"${total_mv:,.0f}")
+                m2.metric("總未實現損益", f"{total_pnl:+,.0f} 元", f"{total_roi:+}%")
+                m3.metric("持股檔數", f"{len(df_sum)} 檔")
+                df_sum["曝險佔比%"] = (df_sum["市值"] / total_mv * 100).round(1) if total_mv > 0 else 0.0
+                st.caption("💡 曝險佔比可看出資金集中度，佔比過高的個股代表單一標的風險較高")
+                st.dataframe(
+                    df_sum[["股票", "市值", "曝險佔比%", "未實現損益", "報酬率%", "狀態"]].sort_values("曝險佔比%", ascending=False),
+                    use_container_width=True, hide_index=True
+                )
+                st.divider()
 
 with tab_leaderboard:
     st.subheader("🔍 個股查詢")
@@ -887,14 +968,15 @@ with tab_theme:
     user_theme = col_in.text_input("輸入題材、產業關鍵字或個股需求", placeholder="例如：矽光子 CPO、低軌衛星、機器人軸承", key="theme_input_query")
     
     if col_btn.button("🔍 探索題材標的", use_container_width=True) and user_theme:
-        api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
-        target_model = st.secrets.get("GEMINI_MODEL", "gemini-2.5-flash")
+        api_key = _get_secret("GEMINI_API_KEY")
+        target_model = _get_secret("GEMINI_MODEL", "gemini-2.5-flash")
         if not api_key:
             st.error("⚠️ 請先在 secrets 中設定 `GEMINI_API_KEY`。")
         else:
             client = genai.Client(api_key=api_key)
             with st.spinner("AI 正在解析產業鏈與對應台股標的..."):
-                candidates = map_theme_to_stocks(user_theme, client, target_model)
+                known_syms = {clean_sym(it.get("symbol", "")).upper() for it in market_rankings}
+                candidates = map_theme_to_stocks(user_theme, client, target_model, known_syms)
                 st.session_state["theme_candidates"] = candidates
                 st.session_state["active_theme_name"] = user_theme
 
@@ -903,7 +985,11 @@ with tab_theme:
         candidates_df = pd.DataFrame(st.session_state["theme_candidates"])
         if "選取" not in candidates_df.columns:
             candidates_df.insert(0, "選取", True)
-        
+        if "db_verified" not in candidates_df.columns:
+            candidates_df["db_verified"] = False
+        candidates_df["資料庫驗證"] = candidates_df["db_verified"].map(lambda v: "✅ 已收錄" if v else "⚠️ 未收錄")
+        candidates_df = candidates_df.drop(columns=["db_verified"])
+
         edited_df = st.data_editor(
             candidates_df,
             column_config={
@@ -911,10 +997,11 @@ with tab_theme:
                 "symbol": st.column_config.TextColumn("代號", width=80),
                 "name": st.column_config.TextColumn("名稱", width=100),
                 "market": st.column_config.TextColumn("市場", width=70),
+                "資料庫驗證": st.column_config.TextColumn("資料庫驗證", width=100, help="是否存在於目前的全市場RS資料庫中；未收錄不代表一定是錯誤代號（可能是資料庫尚未收錄的標的），但建議自行核實。"),
                 "relevance": st.column_config.TextColumn("題材純度", width=140),
                 "business_role": st.column_config.TextColumn("受惠主因 / 產品定位", width=320),
             },
-            disabled=["symbol", "name", "market", "relevance", "business_role"],
+            disabled=["symbol", "name", "market", "資料庫驗證", "relevance", "business_role"],
             hide_index=True,
             use_container_width=True,
             key="candidate_editor"
@@ -1029,7 +1116,7 @@ with tab_market_breadth:
     st.subheader("📊 大盤指標")
 
     with st.expander("📖 說明：順勢操作模式切換指標與判斷準則", expanded=False):
-        st.markdown("""
+        st.markdown(r"""
         本分頁依據台股月週期（20日）與季週期（60日）量化市場動能環境，作為切換**「主升段波段進攻」**與**「震盪弱勢防守」**的客觀依據：
 
         #### 🎯 核心指標定義與公式
@@ -1200,8 +1287,8 @@ with tab_ai:
         with st.chat_message("user"):
             st.markdown(user_prompt)
 
-        api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
-        target_model = st.secrets.get("GEMINI_MODEL", "gemini-2.5-flash")
+        api_key = _get_secret("GEMINI_API_KEY")
+        target_model = _get_secret("GEMINI_MODEL", "gemini-2.5-flash")
         
         if not api_key:
             err_msg = "⚠️ 請在 secrets 中設定 `GEMINI_API_KEY`。"
@@ -1211,11 +1298,14 @@ with tab_ai:
         else:
             try:
                 client = genai.Client(api_key=api_key)
+                # 將畫面上的對話紀錄轉為 Gemini 要求的多輪對話格式（role 需為 user/model），
+                # 讓 AI 能真正參照先前的問答，而不是每次只看到單一句話。
+                gemini_contents = [{"role": "model" if m["role"] == "assistant" else "user", "parts": [m["content"]]} for m in st.session_state.chat_history]
                 with st.chat_message("assistant"):
                     with st.spinner("思考中..."):
                         response = client.models.generate_content(
                             model=target_model,
-                            contents=user_prompt,
+                            contents=gemini_contents,
                             config={"system_instruction": system_context}
                         )
                         reply = response.text
