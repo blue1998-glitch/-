@@ -32,6 +32,7 @@ def _load_names():
 
 OFFICIAL_STOCK_NAMES = _load_names()
 clean_sym = lambda v: str(v or "").strip()[:-2] if str(v or "").strip().endswith(".0") else str(v or "").strip()
+is_otc_market = lambda m: "TWO" in str(m or "").upper() or "上櫃" in str(m or "")
 
 def clean_stock_name(name, symbol=None):
     sym = clean_sym(symbol).upper()
