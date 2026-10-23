@@ -228,18 +228,6 @@
     "rs_rating": 99
   },
   {
-    "symbol": "4174",
-    "name": "浩鼎",
-    "market": "上櫃",
-    "close_price": 51.0,
-    "r_5d": -14.86,
-    "r_20d": 70.57,
-    "r_60d": 88.19,
-    "score": 38.99,
-    "pattern_badge": "📦 區間整理",
-    "rs_rating": 99
-  },
-  {
     "symbol": "5013",
     "name": "強新",
     "market": "上櫃",
@@ -248,6 +236,18 @@
     "r_20d": 53.89,
     "r_60d": 97.6,
     "score": 38.36,
+    "pattern_badge": "📦 區間整理",
+    "rs_rating": 99
+  },
+  {
+    "symbol": "4174",
+    "name": "浩鼎",
+    "market": "上櫃",
+    "close_price": 50.5,
+    "r_5d": -14.86,
+    "r_20d": 68.9,
+    "r_60d": 86.35,
+    "score": 38.03,
     "pattern_badge": "📦 區間整理",
     "rs_rating": 98
   },
@@ -612,6 +612,18 @@
     "rs_rating": 97
   },
   {
+    "symbol": "1516",
+    "name": "川飛",
+    "market": "上市",
+    "close_price": 24.73,
+    "r_5d": 0.0,
+    "r_20d": 37.92,
+    "r_60d": 15.94,
+    "score": 22.36,
+    "pattern_badge": "🚀 右側強勢整理",
+    "rs_rating": 97
+  },
+  {
     "symbol": "4563",
     "name": "百德",
     "market": "上櫃",
@@ -620,18 +632,6 @@
     "r_20d": 18.3,
     "r_60d": 39.87,
     "score": 21.84,
-    "pattern_badge": "🚀 右側強勢整理",
-    "rs_rating": 97
-  },
-  {
-    "symbol": "1516",
-    "name": "川飛",
-    "market": "上市",
-    "close_price": 24.73,
-    "r_5d": -0.0,
-    "r_20d": 36.4,
-    "r_60d": 15.94,
-    "score": 21.64,
     "pattern_badge": "🚀 右側強勢整理",
     "rs_rating": 97
   },
@@ -1764,6 +1764,18 @@
     "rs_rating": 92
   },
   {
+    "symbol": "6212",
+    "name": "理銘",
+    "market": "上櫃",
+    "close_price": 34.2,
+    "r_5d": 6.88,
+    "r_20d": 4.91,
+    "r_60d": 18.13,
+    "score": 10.34,
+    "pattern_badge": "🎯 VCP收縮蓄勢",
+    "rs_rating": 92
+  },
+  {
     "symbol": "5426",
     "name": "振發",
     "market": "上櫃",
@@ -1785,18 +1797,6 @@
     "r_60d": 40.69,
     "score": 10.21,
     "pattern_badge": "🚀 右側強勢整理",
-    "rs_rating": 92
-  },
-  {
-    "symbol": "6212",
-    "name": "理銘",
-    "market": "上櫃",
-    "close_price": 34.2,
-    "r_5d": 6.21,
-    "r_20d": 4.91,
-    "r_60d": 18.34,
-    "score": 10.17,
-    "pattern_badge": "🎯 VCP收縮蓄勢",
     "rs_rating": 92
   },
   {
@@ -2448,6 +2448,18 @@
     "rs_rating": 89
   },
   {
+    "symbol": "4139",
+    "name": "馬光-KY",
+    "market": "上櫃",
+    "close_price": 43.9,
+    "r_5d": -0.11,
+    "r_20d": 7.73,
+    "r_60d": 9.89,
+    "score": 7.45,
+    "pattern_badge": "🎯 VCP收縮蓄勢",
+    "rs_rating": 89
+  },
+  {
     "symbol": "2881",
     "name": "富邦金",
     "market": "上市",
@@ -2625,7 +2637,7 @@
     "r_60d": 9.46,
     "score": 6.75,
     "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 89
+    "rs_rating": 88
   },
   {
     "symbol": "6805",
@@ -2673,18 +2685,6 @@
     "r_60d": 13.92,
     "score": 6.62,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 88
-  },
-  {
-    "symbol": "6236",
-    "name": "中湛",
-    "market": "上櫃",
-    "close_price": 17.3,
-    "r_5d": 13.44,
-    "r_20d": 8.12,
-    "r_60d": 1.47,
-    "score": 6.6,
-    "pattern_badge": "🚀 右側強勢整理",
     "rs_rating": 88
   },
   {
@@ -2757,18 +2757,6 @@
     "r_60d": 10.79,
     "score": 6.32,
     "pattern_badge": "🚀 右側強勢整理",
-    "rs_rating": 88
-  },
-  {
-    "symbol": "4139",
-    "name": "馬光-KY",
-    "market": "上櫃",
-    "close_price": 43.9,
-    "r_5d": 0.8,
-    "r_20d": 4.52,
-    "r_60d": 10.86,
-    "score": 6.29,
-    "pattern_badge": "🎯 VCP收縮蓄勢",
     "rs_rating": 88
   },
   {
@@ -2865,7 +2853,7 @@
     "r_60d": 30.22,
     "score": 6.07,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 87
+    "rs_rating": 88
   },
   {
     "symbol": "1301",
@@ -3105,7 +3093,7 @@
     "r_60d": 19.97,
     "score": 5.52,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 86
+    "rs_rating": 87
   },
   {
     "symbol": "6426",
@@ -3345,7 +3333,7 @@
     "r_60d": 7.34,
     "score": 5.08,
     "pattern_badge": "🚀 右側強勢整理",
-    "rs_rating": 85
+    "rs_rating": 86
   },
   {
     "symbol": "6170",
@@ -3585,7 +3573,7 @@
     "r_60d": -6.21,
     "score": 4.59,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 84
+    "rs_rating": 85
   },
   {
     "symbol": "2221",
@@ -3667,6 +3655,18 @@
     "r_5d": -0.88,
     "r_20d": 5.61,
     "r_60d": 5.12,
+    "score": 4.45,
+    "pattern_badge": "🎯 VCP收縮蓄勢",
+    "rs_rating": 84
+  },
+  {
+    "symbol": "5455",
+    "name": "昇益",
+    "market": "上櫃",
+    "close_price": 31.0,
+    "r_5d": 3.33,
+    "r_20d": 1.64,
+    "r_60d": 8.58,
     "score": 4.45,
     "pattern_badge": "🎯 VCP收縮蓄勢",
     "rs_rating": 84
@@ -3864,6 +3864,18 @@
     "rs_rating": 83
   },
   {
+    "symbol": "2073",
+    "name": "雄順",
+    "market": "上櫃",
+    "close_price": 26.85,
+    "r_5d": 5.29,
+    "r_20d": 7.4,
+    "r_60d": -5.46,
+    "score": 3.97,
+    "pattern_badge": "🎯 VCP收縮蓄勢",
+    "rs_rating": 83
+  },
+  {
     "symbol": "6533",
     "name": "晶心科",
     "market": "上市",
@@ -4020,6 +4032,18 @@
     "rs_rating": 83
   },
   {
+    "symbol": "1538",
+    "name": "正峰",
+    "market": "上市",
+    "close_price": 9.25,
+    "r_5d": 0.0,
+    "r_20d": 11.45,
+    "r_60d": -7.5,
+    "score": 3.74,
+    "pattern_badge": "🚀 右側強勢整理",
+    "rs_rating": 83
+  },
+  {
     "symbol": "4767",
     "name": "誠泰科技",
     "market": "上櫃",
@@ -4029,7 +4053,7 @@
     "r_60d": 8.02,
     "score": 3.71,
     "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 83
+    "rs_rating": 82
   },
   {
     "symbol": "6470",
@@ -4041,7 +4065,7 @@
     "r_60d": -2.03,
     "score": 3.68,
     "pattern_badge": "🚀 右側強勢整理",
-    "rs_rating": 83
+    "rs_rating": 82
   },
   {
     "symbol": "6416",
@@ -4188,6 +4212,18 @@
     "rs_rating": 82
   },
   {
+    "symbol": "6597",
+    "name": "立誠",
+    "market": "上櫃",
+    "close_price": 70.0,
+    "r_5d": -2.51,
+    "r_20d": 2.94,
+    "r_60d": 11.82,
+    "score": 3.53,
+    "pattern_badge": "🚀 右側強勢整理",
+    "rs_rating": 82
+  },
+  {
     "symbol": "5015",
     "name": "華祺",
     "market": "上櫃",
@@ -4257,7 +4293,7 @@
     "r_60d": 14.69,
     "score": 3.37,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 82
+    "rs_rating": 81
   },
   {
     "symbol": "3303",
@@ -4269,7 +4305,7 @@
     "r_60d": 0.58,
     "score": 3.36,
     "pattern_badge": "🚀 右側強勢整理",
-    "rs_rating": 82
+    "rs_rating": 81
   },
   {
     "symbol": "2889",
@@ -4280,18 +4316,6 @@
     "r_20d": 0.3,
     "r_60d": 8.92,
     "score": 3.33,
-    "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 82
-  },
-  {
-    "symbol": "5455",
-    "name": "昇益",
-    "market": "上櫃",
-    "close_price": 31.0,
-    "r_5d": -0.8,
-    "r_20d": 1.64,
-    "r_60d": 9.54,
-    "score": 3.31,
     "pattern_badge": "🎯 VCP收縮蓄勢",
     "rs_rating": 81
   },
@@ -4428,18 +4452,6 @@
     "rs_rating": 81
   },
   {
-    "symbol": "6597",
-    "name": "立誠",
-    "market": "上櫃",
-    "close_price": 70.0,
-    "r_5d": -2.51,
-    "r_20d": -0.14,
-    "r_60d": 15.7,
-    "score": 3.11,
-    "pattern_badge": "🚀 右側強勢整理",
-    "rs_rating": 81
-  },
-  {
     "symbol": "6661",
     "name": "威健生技",
     "market": "上櫃",
@@ -4521,7 +4533,7 @@
     "r_60d": 4.98,
     "score": 3.0,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 81
+    "rs_rating": 80
   },
   {
     "symbol": "8021",
@@ -4761,7 +4773,7 @@
     "r_60d": 2.92,
     "score": 2.74,
     "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 80
+    "rs_rating": 79
   },
   {
     "symbol": "3324",
@@ -4833,18 +4845,6 @@
     "r_60d": 18.56,
     "score": 2.57,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 79
-  },
-  {
-    "symbol": "2073",
-    "name": "雄順",
-    "market": "上櫃",
-    "close_price": 26.85,
-    "r_5d": 5.29,
-    "r_20d": 3.27,
-    "r_60d": -3.07,
-    "score": 2.56,
-    "pattern_badge": "🎯 VCP收縮蓄勢",
     "rs_rating": 79
   },
   {
@@ -5304,6 +5304,18 @@
     "rs_rating": 77
   },
   {
+    "symbol": "8455",
+    "name": "大拓-KY",
+    "market": "上櫃",
+    "close_price": 24.55,
+    "r_5d": 1.45,
+    "r_20d": 8.15,
+    "r_60d": -9.07,
+    "score": 1.93,
+    "pattern_badge": "🚀 右側強勢整理",
+    "rs_rating": 77
+  },
+  {
     "symbol": "6140",
     "name": "訊達電腦",
     "market": "上櫃",
@@ -5445,18 +5457,6 @@
     "r_60d": 9.63,
     "score": 1.85,
     "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 77
-  },
-  {
-    "symbol": "2724",
-    "name": "藝舍-KY",
-    "market": "上櫃",
-    "close_price": 12.15,
-    "r_5d": 1.67,
-    "r_20d": 4.29,
-    "r_60d": 2.53,
-    "score": 1.81,
-    "pattern_badge": "📦 區間整理",
     "rs_rating": 77
   },
   {
@@ -5664,6 +5664,18 @@
     "rs_rating": 76
   },
   {
+    "symbol": "2724",
+    "name": "藝舍-KY",
+    "market": "上櫃",
+    "close_price": 12.15,
+    "r_5d": 1.67,
+    "r_20d": 2.53,
+    "r_60d": 2.53,
+    "score": 1.58,
+    "pattern_badge": "📦 區間整理",
+    "rs_rating": 76
+  },
+  {
     "symbol": "3485",
     "name": "敘豐",
     "market": "上櫃",
@@ -5673,18 +5685,6 @@
     "r_60d": -0.45,
     "score": 1.57,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 76
-  },
-  {
-    "symbol": "8455",
-    "name": "大拓-KY",
-    "market": "上櫃",
-    "close_price": 24.55,
-    "r_5d": 1.45,
-    "r_20d": 8.15,
-    "r_60d": -10.07,
-    "score": 1.54,
-    "pattern_badge": "🚀 右側強勢整理",
     "rs_rating": 76
   },
   {
@@ -6360,6 +6360,18 @@
     "rs_rating": 73
   },
   {
+    "symbol": "6236",
+    "name": "中湛",
+    "market": "上櫃",
+    "close_price": 17.3,
+    "r_5d": 6.46,
+    "r_20d": -1.14,
+    "r_60d": 1.47,
+    "score": 0.95,
+    "pattern_badge": "🚀 右側強勢整理",
+    "rs_rating": 73
+  },
+  {
     "symbol": "2201",
     "name": "裕隆",
     "market": "上市",
@@ -6368,6 +6380,18 @@
     "r_20d": -0.34,
     "r_60d": 5.42,
     "score": 0.94,
+    "pattern_badge": "🚀 右側強勢整理",
+    "rs_rating": 73
+  },
+  {
+    "symbol": "3085",
+    "name": "新零售",
+    "market": "上櫃",
+    "close_price": 15.45,
+    "r_5d": -0.32,
+    "r_20d": 3.4,
+    "r_60d": -2.49,
+    "score": 0.92,
     "pattern_badge": "🚀 右側強勢整理",
     "rs_rating": 73
   },
@@ -6417,7 +6441,7 @@
     "r_60d": -0.82,
     "score": 0.88,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 73
+    "rs_rating": 72
   },
   {
     "symbol": "6117",
@@ -6429,7 +6453,7 @@
     "r_60d": -3.37,
     "score": 0.86,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 73
+    "rs_rating": 72
   },
   {
     "symbol": "3149",
@@ -6645,7 +6669,7 @@
     "r_60d": -1.12,
     "score": 0.76,
     "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 72
+    "rs_rating": 71
   },
   {
     "symbol": "1773",
@@ -6657,7 +6681,7 @@
     "r_60d": 3.12,
     "score": 0.75,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 72
+    "rs_rating": 71
   },
   {
     "symbol": "2913",
@@ -6828,18 +6852,6 @@
     "rs_rating": 71
   },
   {
-    "symbol": "4530",
-    "name": "天意能創",
-    "market": "上櫃",
-    "close_price": 24.7,
-    "r_5d": -0.8,
-    "r_20d": 8.81,
-    "r_60d": -0.4,
-    "score": 0.65,
-    "pattern_badge": "📦 區間整理",
-    "rs_rating": 71
-  },
-  {
     "symbol": "4138",
     "name": "曜亞",
     "market": "上櫃",
@@ -6885,18 +6897,6 @@
     "r_60d": 16.31,
     "score": 0.58,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 71
-  },
-  {
-    "symbol": "8342",
-    "name": "益張",
-    "market": "上櫃",
-    "close_price": 86.0,
-    "r_5d": 1.78,
-    "r_20d": 4.88,
-    "r_60d": -5.6,
-    "score": 0.58,
-    "pattern_badge": "🎯 VCP收縮蓄勢",
     "rs_rating": 71
   },
   {
@@ -7320,6 +7320,18 @@
     "rs_rating": 69
   },
   {
+    "symbol": "4728",
+    "name": "雙美",
+    "market": "上櫃",
+    "close_price": 395.5,
+    "r_5d": 0.64,
+    "r_20d": -1.0,
+    "r_60d": 3.26,
+    "score": 0.33,
+    "pattern_badge": "🎯 VCP收縮蓄勢",
+    "rs_rating": 69
+  },
+  {
     "symbol": "2426",
     "name": "鼎元",
     "market": "上市",
@@ -7377,7 +7389,7 @@
     "r_60d": -1.45,
     "score": 0.29,
     "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 69
+    "rs_rating": 68
   },
   {
     "symbol": "3675",
@@ -7617,7 +7629,7 @@
     "r_60d": -0.88,
     "score": 0.23,
     "pattern_badge": "🚀 右側強勢整理",
-    "rs_rating": 68
+    "rs_rating": 67
   },
   {
     "symbol": "3305",
@@ -7857,7 +7869,7 @@
     "r_60d": -2.93,
     "score": 0.14,
     "pattern_badge": "🚀 右側強勢整理",
-    "rs_rating": 67
+    "rs_rating": 66
   },
   {
     "symbol": "2354",
@@ -7968,6 +7980,18 @@
     "rs_rating": 66
   },
   {
+    "symbol": "8342",
+    "name": "益張",
+    "market": "上櫃",
+    "close_price": 86.0,
+    "r_5d": -0.69,
+    "r_20d": 2.99,
+    "r_60d": -3.37,
+    "score": 0.13,
+    "pattern_badge": "🎯 VCP收縮蓄勢",
+    "rs_rating": 66
+  },
+  {
     "symbol": "1603",
     "name": "華電",
     "market": "上市",
@@ -8004,18 +8028,6 @@
     "rs_rating": 66
   },
   {
-    "symbol": "6921",
-    "name": "嘉雨思-創",
-    "market": "上市",
-    "close_price": 64.5,
-    "r_5d": -0.62,
-    "r_20d": 1.42,
-    "r_60d": 0.16,
-    "score": 0.11,
-    "pattern_badge": "📦 區間整理",
-    "rs_rating": 66
-  },
-  {
     "symbol": "3465",
     "name": "進泰電子",
     "market": "上櫃",
@@ -8025,18 +8037,6 @@
     "r_60d": -5.21,
     "score": 0.11,
     "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 66
-  },
-  {
-    "symbol": "1538",
-    "name": "正峰",
-    "market": "上市",
-    "close_price": 9.25,
-    "r_5d": -0.22,
-    "r_20d": 4.52,
-    "r_60d": -7.5,
-    "score": 0.1,
-    "pattern_badge": "🚀 右側強勢整理",
     "rs_rating": 66
   },
   {
@@ -8086,18 +8086,6 @@
     "score": 0.08,
     "pattern_badge": "🎯 VCP收縮蓄勢",
     "rs_rating": 66
-  },
-  {
-    "symbol": "5703",
-    "name": "亞都麗緻",
-    "market": "上櫃",
-    "close_price": 13.8,
-    "r_5d": 0.0,
-    "r_20d": 0.73,
-    "r_60d": -0.36,
-    "score": 0.08,
-    "pattern_badge": "🚀 右側強勢整理",
-    "rs_rating": 65
   },
   {
     "symbol": "6967",
@@ -8304,18 +8292,6 @@
     "rs_rating": 65
   },
   {
-    "symbol": "5348",
-    "name": "正能量智能",
-    "market": "上櫃",
-    "close_price": 16.6,
-    "r_5d": -3.21,
-    "r_20d": 1.22,
-    "r_60d": 1.84,
-    "score": 0.01,
-    "pattern_badge": "📦 區間整理",
-    "rs_rating": 65
-  },
-  {
     "symbol": "6510",
     "name": "精測",
     "market": "上櫃",
@@ -8337,7 +8313,7 @@
     "r_60d": -16.8,
     "score": 0.01,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 64
+    "rs_rating": 65
   },
   {
     "symbol": "1313",
@@ -8349,7 +8325,7 @@
     "r_60d": 7.96,
     "score": -0.0,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 64
+    "rs_rating": 65
   },
   {
     "symbol": "1589",
@@ -8460,18 +8436,6 @@
     "rs_rating": 64
   },
   {
-    "symbol": "8047",
-    "name": "星雲",
-    "market": "上櫃",
-    "close_price": 53.45,
-    "r_5d": -0.0,
-    "r_20d": -1.55,
-    "r_60d": 2.66,
-    "score": -0.01,
-    "pattern_badge": "📦 區間整理",
-    "rs_rating": 64
-  },
-  {
     "symbol": "1789",
     "name": "神隆",
     "market": "上市",
@@ -8577,7 +8541,7 @@
     "r_60d": 2.3,
     "score": -0.04,
     "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 63
+    "rs_rating": 64
   },
   {
     "symbol": "4580",
@@ -8589,7 +8553,7 @@
     "r_60d": 0.49,
     "score": -0.04,
     "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 63
+    "rs_rating": 64
   },
   {
     "symbol": "4908",
@@ -8601,7 +8565,7 @@
     "r_60d": 37.76,
     "score": -0.04,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 63
+    "rs_rating": 64
   },
   {
     "symbol": "8435",
@@ -8817,7 +8781,7 @@
     "r_60d": 1.05,
     "score": -0.09,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 62
+    "rs_rating": 63
   },
   {
     "symbol": "1817",
@@ -8829,7 +8793,7 @@
     "r_60d": 2.72,
     "score": -0.1,
     "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 62
+    "rs_rating": 63
   },
   {
     "symbol": "2731",
@@ -8841,7 +8805,7 @@
     "r_60d": -1.37,
     "score": -0.1,
     "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 62
+    "rs_rating": 63
   },
   {
     "symbol": "8367",
@@ -9048,6 +9012,18 @@
     "rs_rating": 62
   },
   {
+    "symbol": "8047",
+    "name": "星雲",
+    "market": "上櫃",
+    "close_price": 53.45,
+    "r_5d": 0.0,
+    "r_20d": -3.06,
+    "r_60d": 3.26,
+    "score": -0.12,
+    "pattern_badge": "📦 區間整理",
+    "rs_rating": 62
+  },
+  {
     "symbol": "1726",
     "name": "永記",
     "market": "上市",
@@ -9057,7 +9033,7 @@
     "r_60d": -0.91,
     "score": -0.13,
     "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 61
+    "rs_rating": 62
   },
   {
     "symbol": "2356",
@@ -9069,7 +9045,7 @@
     "r_60d": -5.17,
     "score": -0.13,
     "pattern_badge": "⚠️ 左側弱勢反彈",
-    "rs_rating": 61
+    "rs_rating": 62
   },
   {
     "symbol": "6274",
@@ -9108,18 +9084,6 @@
     "rs_rating": 61
   },
   {
-    "symbol": "1583",
-    "name": "程泰",
-    "market": "上市",
-    "close_price": 47.0,
-    "r_5d": -1.67,
-    "r_20d": -0.63,
-    "r_60d": 2.46,
-    "score": -0.14,
-    "pattern_badge": "📦 區間整理",
-    "rs_rating": 61
-  },
-  {
     "symbol": "2610",
     "name": "華航",
     "market": "上市",
@@ -9153,6 +9117,18 @@
     "r_60d": 1.07,
     "score": -0.14,
     "pattern_badge": "📦 區間整理",
+    "rs_rating": 61
+  },
+  {
+    "symbol": "5703",
+    "name": "亞都麗緻",
+    "market": "上櫃",
+    "close_price": 13.8,
+    "r_5d": 0.0,
+    "r_20d": -0.72,
+    "r_60d": -0.36,
+    "score": -0.14,
+    "pattern_badge": "🚀 右側強勢整理",
     "rs_rating": 61
   },
   {
@@ -9213,6 +9189,18 @@
     "r_60d": -9.57,
     "score": -0.15,
     "pattern_badge": "📦 區間整理",
+    "rs_rating": 61
+  },
+  {
+    "symbol": "4305",
+    "name": "世坤",
+    "market": "上櫃",
+    "close_price": 41.15,
+    "r_5d": 0.73,
+    "r_20d": -2.37,
+    "r_60d": 0.37,
+    "score": -0.15,
+    "pattern_badge": "⚠️ 左側弱勢反彈",
     "rs_rating": 61
   },
   {
@@ -9285,7 +9273,7 @@
     "r_60d": 0.72,
     "score": -0.17,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 60
+    "rs_rating": 61
   },
   {
     "symbol": "2317",
@@ -9513,6 +9501,18 @@
     "r_60d": 5.41,
     "score": -0.2,
     "pattern_badge": "📦 區間整理",
+    "rs_rating": 60
+  },
+  {
+    "symbol": "6242",
+    "name": "立康",
+    "market": "上櫃",
+    "close_price": 33.9,
+    "r_5d": 0.59,
+    "r_20d": -0.15,
+    "r_60d": -4.1,
+    "score": -0.2,
+    "pattern_badge": "🎯 VCP收縮蓄勢",
     "rs_rating": 60
   },
   {
@@ -9804,6 +9804,18 @@
     "rs_rating": 58
   },
   {
+    "symbol": "2321",
+    "name": "東訊",
+    "market": "上市",
+    "close_price": 26.0,
+    "r_5d": 1.96,
+    "r_20d": 0.0,
+    "r_60d": -5.21,
+    "score": -0.24,
+    "pattern_badge": "🚀 右側強勢整理",
+    "rs_rating": 58
+  },
+  {
     "symbol": "2338",
     "name": "光罩",
     "market": "上市",
@@ -9993,7 +10005,7 @@
     "r_60d": -5.19,
     "score": -0.26,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 58
+    "rs_rating": 57
   },
   {
     "symbol": "2009",
@@ -10063,6 +10075,18 @@
     "r_5d": 0.0,
     "r_20d": -3.33,
     "r_60d": 1.0,
+    "score": -0.26,
+    "pattern_badge": "📦 區間整理",
+    "rs_rating": 57
+  },
+  {
+    "symbol": "4530",
+    "name": "天意能創",
+    "market": "上櫃",
+    "close_price": 24.7,
+    "r_5d": -3.52,
+    "r_20d": -0.6,
+    "r_60d": -0.4,
     "score": -0.26,
     "pattern_badge": "📦 區間整理",
     "rs_rating": 57
@@ -10212,18 +10236,6 @@
     "rs_rating": 57
   },
   {
-    "symbol": "4305",
-    "name": "世坤",
-    "market": "上櫃",
-    "close_price": 41.15,
-    "r_5d": 0.98,
-    "r_20d": -3.63,
-    "r_60d": -0.36,
-    "score": -0.28,
-    "pattern_badge": "⚠️ 左側弱勢反彈",
-    "rs_rating": 57
-  },
-  {
     "symbol": "5425",
     "name": "台半",
     "market": "上櫃",
@@ -10233,18 +10245,6 @@
     "r_60d": 7.25,
     "score": -0.28,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 57
-  },
-  {
-    "symbol": "6242",
-    "name": "立康",
-    "market": "上櫃",
-    "close_price": 33.9,
-    "r_5d": 0.59,
-    "r_20d": -0.15,
-    "r_60d": -5.7,
-    "score": -0.28,
-    "pattern_badge": "🎯 VCP收縮蓄勢",
     "rs_rating": 56
   },
   {
@@ -10620,6 +10620,18 @@
     "rs_rating": 55
   },
   {
+    "symbol": "5348",
+    "name": "正能量智能",
+    "market": "上櫃",
+    "close_price": 16.6,
+    "r_5d": -4.6,
+    "r_20d": 0.0,
+    "r_60d": 0.61,
+    "score": -0.32,
+    "pattern_badge": "📦 區間整理",
+    "rs_rating": 55
+  },
+  {
     "symbol": "7718",
     "name": "友鋮",
     "market": "上櫃",
@@ -10701,7 +10713,7 @@
     "r_60d": -5.02,
     "score": -0.34,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 55
+    "rs_rating": 54
   },
   {
     "symbol": "2498",
@@ -10759,18 +10771,6 @@
     "r_5d": 3.51,
     "r_20d": -2.8,
     "r_60d": -11.68,
-    "score": -0.34,
-    "pattern_badge": "⚠️ 左側弱勢反彈",
-    "rs_rating": 54
-  },
-  {
-    "symbol": "8077",
-    "name": "洛碁",
-    "market": "上櫃",
-    "close_price": 41.9,
-    "r_5d": 2.95,
-    "r_20d": -3.68,
-    "r_60d": -5.1,
     "score": -0.34,
     "pattern_badge": "⚠️ 左側弱勢反彈",
     "rs_rating": 54
@@ -11172,18 +11172,6 @@
     "rs_rating": 53
   },
   {
-    "symbol": "4581",
-    "name": "光隆精密-KY",
-    "market": "上市",
-    "close_price": 48.2,
-    "r_5d": 0.42,
-    "r_20d": -0.21,
-    "r_60d": -5.86,
-    "score": -0.39,
-    "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 53
-  },
-  {
     "symbol": "5478",
     "name": "智冠",
     "market": "上櫃",
@@ -11193,7 +11181,7 @@
     "r_60d": -3.0,
     "score": -0.39,
     "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 52
+    "rs_rating": 53
   },
   {
     "symbol": "1418",
@@ -11409,6 +11397,18 @@
     "r_60d": -5.44,
     "score": -0.41,
     "pattern_badge": "📦 區間整理",
+    "rs_rating": 52
+  },
+  {
+    "symbol": "8077",
+    "name": "洛碁",
+    "market": "上櫃",
+    "close_price": 41.9,
+    "r_5d": 3.33,
+    "r_20d": -3.68,
+    "r_60d": -4.77,
+    "score": -0.41,
+    "pattern_badge": "🚀 右側強勢整理",
     "rs_rating": 52
   },
   {
@@ -11952,6 +11952,18 @@
     "rs_rating": 49
   },
   {
+    "symbol": "1583",
+    "name": "程泰",
+    "market": "上市",
+    "close_price": 47.0,
+    "r_5d": -2.49,
+    "r_20d": -1.05,
+    "r_60d": 2.67,
+    "score": -0.48,
+    "pattern_badge": "📦 區間整理",
+    "rs_rating": 49
+  },
+  {
     "symbol": "2382",
     "name": "廣達",
     "market": "上市",
@@ -12129,7 +12141,7 @@
     "r_60d": -3.05,
     "score": -0.49,
     "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 49
+    "rs_rating": 48
   },
   {
     "symbol": "8034",
@@ -12369,7 +12381,7 @@
     "r_60d": -4.82,
     "score": -0.52,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 48
+    "rs_rating": 47
   },
   {
     "symbol": "2388",
@@ -12405,6 +12417,18 @@
     "r_60d": -6.61,
     "score": -0.53,
     "pattern_badge": "📦 區間整理",
+    "rs_rating": 47
+  },
+  {
+    "symbol": "6904",
+    "name": "伯鑫",
+    "market": "上櫃",
+    "close_price": 116.5,
+    "r_5d": 0.43,
+    "r_20d": -2.92,
+    "r_60d": -6.8,
+    "score": -0.53,
+    "pattern_badge": "⚠️ 左側弱勢反彈",
     "rs_rating": 47
   },
   {
@@ -12597,7 +12621,7 @@
     "r_60d": 21.23,
     "score": -0.56,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 47
+    "rs_rating": 46
   },
   {
     "symbol": "1294",
@@ -12609,7 +12633,7 @@
     "r_60d": -11.29,
     "score": -0.56,
     "pattern_badge": "⚠️ 左側弱勢反彈",
-    "rs_rating": 47
+    "rs_rating": 46
   },
   {
     "symbol": "1565",
@@ -12768,6 +12792,18 @@
     "rs_rating": 46
   },
   {
+    "symbol": "1341",
+    "name": "富林-KY",
+    "market": "上市",
+    "close_price": 58.4,
+    "r_5d": -1.52,
+    "r_20d": -2.67,
+    "r_60d": -0.51,
+    "score": -0.58,
+    "pattern_badge": "🎯 VCP收縮蓄勢",
+    "rs_rating": 46
+  },
+  {
     "symbol": "2330",
     "name": "台積電",
     "market": "上市",
@@ -12825,7 +12861,7 @@
     "r_60d": -5.95,
     "score": -0.58,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 46
+    "rs_rating": 45
   },
   {
     "symbol": "6615",
@@ -12837,7 +12873,7 @@
     "r_60d": -1.79,
     "score": -0.58,
     "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 46
+    "rs_rating": 45
   },
   {
     "symbol": "2399",
@@ -12849,7 +12885,7 @@
     "r_60d": 16.0,
     "score": -0.59,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 46
+    "rs_rating": 45
   },
   {
     "symbol": "7760",
@@ -12883,18 +12919,6 @@
     "r_5d": -5.57,
     "r_20d": -0.62,
     "r_60d": -4.26,
-    "score": -0.59,
-    "pattern_badge": "📦 區間整理",
-    "rs_rating": 45
-  },
-  {
-    "symbol": "4535",
-    "name": "至興",
-    "market": "上櫃",
-    "close_price": 26.5,
-    "r_5d": -0.38,
-    "r_20d": -2.21,
-    "r_60d": -4.68,
     "score": -0.59,
     "pattern_badge": "📦 區間整理",
     "rs_rating": 45
@@ -13077,19 +13101,7 @@
     "r_60d": -3.32,
     "score": -0.6,
     "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 45
-  },
-  {
-    "symbol": "4728",
-    "name": "雙美",
-    "market": "上櫃",
-    "close_price": 395.5,
-    "r_5d": -1.0,
-    "r_20d": -2.59,
-    "r_60d": 3.26,
-    "score": -0.6,
-    "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 45
+    "rs_rating": 44
   },
   {
     "symbol": "6114",
@@ -13125,6 +13137,18 @@
     "r_60d": -4.82,
     "score": -0.6,
     "pattern_badge": "🎯 VCP收縮蓄勢",
+    "rs_rating": 44
+  },
+  {
+    "symbol": "1441",
+    "name": "大東",
+    "market": "上市",
+    "close_price": 9.71,
+    "r_5d": 0.94,
+    "r_20d": -4.17,
+    "r_60d": -7.97,
+    "score": -0.61,
+    "pattern_badge": "⚠️ 左側弱勢反彈",
     "rs_rating": 44
   },
   {
@@ -13305,7 +13329,7 @@
     "r_60d": 3.38,
     "score": -0.63,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 44
+    "rs_rating": 43
   },
   {
     "symbol": "1338",
@@ -13317,18 +13341,6 @@
     "r_60d": -6.77,
     "score": -0.63,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 44
-  },
-  {
-    "symbol": "1441",
-    "name": "大東",
-    "market": "上市",
-    "close_price": 9.71,
-    "r_5d": 0.62,
-    "r_20d": -4.17,
-    "r_60d": -7.87,
-    "score": -0.63,
-    "pattern_badge": "⚠️ 左側弱勢反彈",
     "rs_rating": 43
   },
   {
@@ -13557,7 +13569,7 @@
     "r_60d": 10.12,
     "score": -0.64,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 43
+    "rs_rating": 42
   },
   {
     "symbol": "4943",
@@ -13716,18 +13728,6 @@
     "rs_rating": 42
   },
   {
-    "symbol": "6142",
-    "name": "友勁",
-    "market": "上市",
-    "close_price": 9.47,
-    "r_5d": 0.0,
-    "r_20d": -1.47,
-    "r_60d": -10.48,
-    "score": -0.65,
-    "pattern_badge": "📦 區間整理",
-    "rs_rating": 42
-  },
-  {
     "symbol": "7769",
     "name": "鴻勁",
     "market": "上市",
@@ -13809,18 +13809,6 @@
     "r_60d": -8.58,
     "score": -0.66,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 41
-  },
-  {
-    "symbol": "1341",
-    "name": "富林-KY",
-    "market": "上市",
-    "close_price": 58.4,
-    "r_5d": -2.5,
-    "r_20d": -2.18,
-    "r_60d": -1.18,
-    "score": -0.66,
-    "pattern_badge": "🎯 VCP收縮蓄勢",
     "rs_rating": 41
   },
   {
@@ -14049,7 +14037,7 @@
     "r_60d": -4.89,
     "score": -0.67,
     "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 40
+    "rs_rating": 41
   },
   {
     "symbol": "6698",
@@ -14095,6 +14083,18 @@
     "r_5d": -0.6,
     "r_20d": -3.07,
     "r_60d": -2.78,
+    "score": -0.67,
+    "pattern_badge": "📦 區間整理",
+    "rs_rating": 40
+  },
+  {
+    "symbol": "4535",
+    "name": "至興",
+    "market": "上櫃",
+    "close_price": 26.5,
+    "r_5d": -0.75,
+    "r_20d": -2.57,
+    "r_60d": -4.68,
     "score": -0.67,
     "pattern_badge": "📦 區間整理",
     "rs_rating": 40
@@ -14568,18 +14568,6 @@
     "rs_rating": 38
   },
   {
-    "symbol": "3115",
-    "name": "富榮綱",
-    "market": "上櫃",
-    "close_price": 8.07,
-    "r_5d": -1.94,
-    "r_20d": 1.0,
-    "r_60d": -13.13,
-    "score": -0.72,
-    "pattern_badge": "📦 區間整理",
-    "rs_rating": 38
-  },
-  {
     "symbol": "3317",
     "name": "尼克森",
     "market": "上櫃",
@@ -14712,18 +14700,6 @@
     "rs_rating": 38
   },
   {
-    "symbol": "2321",
-    "name": "東訊",
-    "market": "上市",
-    "close_price": 26.0,
-    "r_5d": 1.96,
-    "r_20d": -5.84,
-    "r_60d": -5.21,
-    "score": -0.74,
-    "pattern_badge": "🚀 右側強勢整理",
-    "rs_rating": 38
-  },
-  {
     "symbol": "3046",
     "name": "建碁",
     "market": "上市",
@@ -14757,7 +14733,7 @@
     "r_60d": 0.59,
     "score": -0.74,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 37
+    "rs_rating": 38
   },
   {
     "symbol": "6227",
@@ -14769,7 +14745,7 @@
     "r_60d": 3.43,
     "score": -0.74,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 37
+    "rs_rating": 38
   },
   {
     "symbol": "7753",
@@ -14868,6 +14844,18 @@
     "rs_rating": 37
   },
   {
+    "symbol": "4581",
+    "name": "光隆精密-KY",
+    "market": "上市",
+    "close_price": 48.2,
+    "r_5d": -0.41,
+    "r_20d": -0.52,
+    "r_60d": -5.86,
+    "score": -0.75,
+    "pattern_badge": "🎯 VCP收縮蓄勢",
+    "rs_rating": 37
+  },
+  {
     "symbol": "6464",
     "name": "台數科",
     "market": "上市",
@@ -14887,6 +14875,18 @@
     "r_5d": -0.45,
     "r_20d": -4.47,
     "r_60d": -5.09,
+    "score": -0.75,
+    "pattern_badge": "📦 區間整理",
+    "rs_rating": 37
+  },
+  {
+    "symbol": "6921",
+    "name": "嘉雨思-創",
+    "market": "上市",
+    "close_price": 64.5,
+    "r_5d": 0.0,
+    "r_20d": -7.59,
+    "r_60d": 0.16,
     "score": -0.75,
     "pattern_badge": "📦 區間整理",
     "rs_rating": 37
@@ -15033,18 +15033,6 @@
     "r_60d": 0.32,
     "score": -0.77,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 36
-  },
-  {
-    "symbol": "3085",
-    "name": "新零售",
-    "market": "上櫃",
-    "close_price": 15.45,
-    "r_5d": -4.63,
-    "r_20d": 2.96,
-    "r_60d": -2.49,
-    "score": -0.77,
-    "pattern_badge": "🚀 右側強勢整理",
     "rs_rating": 36
   },
   {
@@ -15237,7 +15225,7 @@
     "r_60d": -14.84,
     "score": -0.79,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 35
+    "rs_rating": 36
   },
   {
     "symbol": "4198",
@@ -15477,7 +15465,7 @@
     "r_60d": -4.84,
     "score": -0.81,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 34
+    "rs_rating": 35
   },
   {
     "symbol": "3206",
@@ -15717,7 +15705,7 @@
     "r_60d": -5.43,
     "score": -0.84,
     "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 33
+    "rs_rating": 34
   },
   {
     "symbol": "1449",
@@ -15945,7 +15933,7 @@
     "r_60d": 6.84,
     "score": -0.85,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 32
+    "rs_rating": 33
   },
   {
     "symbol": "1783",
@@ -16185,7 +16173,7 @@
     "r_60d": -2.62,
     "score": -0.87,
     "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 31
+    "rs_rating": 32
   },
   {
     "symbol": "6125",
@@ -16425,7 +16413,7 @@
     "r_60d": -14.46,
     "score": -0.89,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 30
+    "rs_rating": 31
   },
   {
     "symbol": "1813",
@@ -16567,6 +16555,18 @@
     "r_5d": -1.34,
     "r_20d": -0.96,
     "r_60d": -16.94,
+    "score": -0.91,
+    "pattern_badge": "📦 區間整理",
+    "rs_rating": 30
+  },
+  {
+    "symbol": "3115",
+    "name": "富榮綱",
+    "market": "上櫃",
+    "close_price": 8.07,
+    "r_5d": -1.34,
+    "r_20d": -0.12,
+    "r_60d": -15.05,
     "score": -0.91,
     "pattern_badge": "📦 區間整理",
     "rs_rating": 30
@@ -19692,18 +19692,6 @@
     "rs_rating": 17
   },
   {
-    "symbol": "6843",
-    "name": "進典",
-    "market": "上櫃",
-    "close_price": 37.2,
-    "r_5d": -0.53,
-    "r_20d": -5.22,
-    "r_60d": -5.82,
-    "score": -1.22,
-    "pattern_badge": "📦 區間整理",
-    "rs_rating": 17
-  },
-  {
     "symbol": "8071",
     "name": "能率網通",
     "market": "上櫃",
@@ -19761,7 +19749,7 @@
     "r_60d": -0.24,
     "score": -1.23,
     "pattern_badge": "🎯 VCP收縮蓄勢",
-    "rs_rating": 16
+    "rs_rating": 17
   },
   {
     "symbol": "7777",
@@ -19989,7 +19977,7 @@
     "r_60d": -12.5,
     "score": -1.25,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 15
+    "rs_rating": 16
   },
   {
     "symbol": "3047",
@@ -20172,18 +20160,6 @@
     "rs_rating": 15
   },
   {
-    "symbol": "6904",
-    "name": "伯鑫",
-    "market": "上櫃",
-    "close_price": 116.5,
-    "r_5d": -6.05,
-    "r_20d": -2.1,
-    "r_60d": -6.8,
-    "score": -1.26,
-    "pattern_badge": "📦 區間整理",
-    "rs_rating": 15
-  },
-  {
     "symbol": "6986",
     "name": "和迅",
     "market": "上櫃",
@@ -20229,7 +20205,7 @@
     "r_60d": -20.25,
     "score": -1.27,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 14
+    "rs_rating": 15
   },
   {
     "symbol": "3551",
@@ -20241,7 +20217,7 @@
     "r_60d": -4.36,
     "score": -1.27,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 14
+    "rs_rating": 15
   },
   {
     "symbol": "6169",
@@ -20469,7 +20445,7 @@
     "r_60d": -8.05,
     "score": -1.31,
     "pattern_badge": "⚠️ 左側弱勢反彈",
-    "rs_rating": 13
+    "rs_rating": 14
   },
   {
     "symbol": "5871",
@@ -20481,7 +20457,7 @@
     "r_60d": -9.9,
     "score": -1.31,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 13
+    "rs_rating": 14
   },
   {
     "symbol": "6552",
@@ -20688,6 +20664,18 @@
     "rs_rating": 13
   },
   {
+    "symbol": "6843",
+    "name": "進典",
+    "market": "上櫃",
+    "close_price": 37.2,
+    "r_5d": -0.67,
+    "r_20d": -5.34,
+    "r_60d": -7.0,
+    "score": -1.34,
+    "pattern_badge": "📦 區間整理",
+    "rs_rating": 13
+  },
+  {
     "symbol": "8906",
     "name": "花王",
     "market": "上櫃",
@@ -20709,7 +20697,7 @@
     "r_60d": -5.63,
     "score": -1.35,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 12
+    "rs_rating": 13
   },
   {
     "symbol": "1443",
@@ -20779,6 +20767,18 @@
     "r_5d": -4.29,
     "r_20d": -16.8,
     "r_60d": -11.11,
+    "score": -1.36,
+    "pattern_badge": "📦 區間整理",
+    "rs_rating": 12
+  },
+  {
+    "symbol": "6142",
+    "name": "友勁",
+    "market": "上市",
+    "close_price": 9.47,
+    "r_5d": 0.0,
+    "r_20d": -3.86,
+    "r_60d": -16.65,
     "score": -1.36,
     "pattern_badge": "📦 區間整理",
     "rs_rating": 12
@@ -23004,18 +23004,6 @@
     "rs_rating": 3
   },
   {
-    "symbol": "3064",
-    "name": "泰偉",
-    "market": "上櫃",
-    "close_price": 14.0,
-    "r_5d": -6.35,
-    "r_20d": -17.16,
-    "r_60d": -22.22,
-    "score": -1.83,
-    "pattern_badge": "📦 區間整理",
-    "rs_rating": 3
-  },
-  {
     "symbol": "5245",
     "name": "智晶",
     "market": "上櫃",
@@ -23085,7 +23073,7 @@
     "r_60d": 3.43,
     "score": -1.86,
     "pattern_badge": "📦 區間整理",
-    "rs_rating": 2
+    "rs_rating": 3
   },
   {
     "symbol": "6762",
@@ -23239,6 +23227,18 @@
     "r_5d": -3.06,
     "r_20d": -10.41,
     "r_60d": -15.21,
+    "score": -1.91,
+    "pattern_badge": "📦 區間整理",
+    "rs_rating": 2
+  },
+  {
+    "symbol": "3064",
+    "name": "泰偉",
+    "market": "上櫃",
+    "close_price": 14.0,
+    "r_5d": -6.35,
+    "r_20d": -18.6,
+    "r_60d": -22.22,
     "score": -1.91,
     "pattern_badge": "📦 區間整理",
     "rs_rating": 2
